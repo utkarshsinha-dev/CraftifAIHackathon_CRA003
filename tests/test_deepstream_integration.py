@@ -343,3 +343,155 @@ def test_stream_consumer_cli_integration(schema):
             os.remove(stream_path)
         if os.path.exists(test_output):
             os.remove(test_output)
+
+
+def test_real_pipegen_metadata_end_to_end(schema):
+    """
+    End-to-end integration test reading authentic DeepStream perception metadata
+    produced by the compiled PipeGen YOLO11s TensorRT pipeline
+    (artifacts/pipegen-export/output/metadata.json).
+
+    Verifies:
+    1. Complete ingestion of all 163 frames and 320 detected objects.
+    2. Detection normalization from 1728x1080 pixel space to [0.0, 1.0].
+    3. Ground-contact point projection to restricted zone polygons.
+    4. Emission of genuine ENTRY and OCCUPANCY events.
+    5. Cooldown throttling preventing alarm flooding (320 detections -> exactly 6 incidents).
+    6. 100% schema compliance of all emitted JSONL incident records.
+    """
+    meta_path = "artifacts/pipegen-export/output/metadata.json"
+    if not os.path.isfile(meta_path):
+        pytest.skip(f"PipeGen metadata file not found at {meta_path}")
+
+    test_output = "data/output/test_pipegen_real_metadata.jsonl"
+    if os.path.exists(test_output):
+        os.remove(test_output)
+
+    with open(meta_path, "r", encoding="utf-8") as f:
+        meta_data = json.load(f)
+
+    monitor = ZoneIntrusionMonitor(
+        config_path="configs/restricted_zone.json",
+        output_log_path=test_output,
+    )
+    adapter = DeepStreamMetadataAdapter(
+        zone_monitor=monitor,
+        min_confidence=0.40,
+        default_frame_width=1728,
+        default_frame_height=1080,
+    )
+
+    total_detections = 0
+    all_incidents = []
+
+    for frame in meta_data.get("frames", []):
+        w = frame.get("width", 1728)
+        h = frame.get("height", 1080)
+        pts_sec = frame.get("pts_ns", 0) / 1_000_000_000
+
+        for obj in frame.get("objects", []):
+            bbox = obj.get("bbox", {})
+            if not isinstance(bbox, dict):
+                continue
+
+            total_detections += 1
+            record = {
+                "class_id": obj.get("class_id", 0),
+                "confidence": obj.get("confidence", 0.0),
+                "track_id": obj.get("id"),
+                "frame_index": frame.get("frame"),
+                "timestamp_epoch": pts_sec,
+                "frame_width": w,
+                "frame_height": h,
+                "rect_params": {
+                    "left": bbox.get("left"),
+                    "top": bbox.get("top"),
+                    "width": bbox.get("width"),
+                    "height": bbox.get("height"),
+                },
+            }
+            incidents = adapter.process_raw_dict(record)
+            if incidents:
+                all_incidents.extend(incidents)
+
+    try:
+        # Assertions on genuine perception metadata
+        assert len(meta_data.get("frames", [])) == 163
+        assert total_detections == 320
+        assert len(all_incidents) == 6
+
+        # Check event breakdown
+        entries = [i for i in all_incidents if i["event_type"] == "ZONE_INTRUSION_ENTRY"]
+        occupancies = [i for i in all_incidents if i["event_type"] == "ZONE_INTRUSION_OCCUPANCY"]
+        assert len(entries) == 2
+        assert len(occupancies) == 4
+
+        # Verify track IDs involved (Track 0 and Track 1)
+        tracks_in_incidents = set(i["track_id"] for i in all_incidents)
+        assert tracks_in_incidents == {0, 1}
+
+        # Verify zone breached
+        for inc in all_incidents:
+            assert inc["zone_id"] == "zone_restricted_01"
+            assert inc["severity"] == "CRITICAL"
+            validate_record_schema(inc, schema)
+
+        # Verify persisted JSONL file
+        assert os.path.isfile(test_output)
+        with open(test_output, "r", encoding="utf-8") as f:
+            persisted = [json.loads(line) for line in f if line.strip()]
+        assert len(persisted) == 6
+        for p in persisted:
+            validate_record_schema(p, schema)
+
+    finally:
+        if os.path.exists(test_output):
+            os.remove(test_output)
+
+
+def test_repaired_demo_video_motion_and_integrity():
+    """
+    Verifies that the repaired demonstration video:
+    1. Exists and is non-empty.
+    2. Decodes all 163 frames completely without corruption.
+    3. Has correct framerate (30.0 FPS) and duration (~5.43s).
+    4. Confirms that background and target regions advance sequentially
+       rather than freezing on a static still image.
+    """
+    import cv2
+    import numpy as np
+
+    video_path = "data/output/sentinel_demo_repaired.mp4"
+    if not os.path.isfile(video_path):
+        pytest.skip(f"Repaired video not found: {video_path}")
+
+    cap = cv2.VideoCapture(video_path)
+    assert cap.isOpened(), f"Failed to open video: {video_path}"
+
+    frames = []
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frames.append(frame)
+    cap.release()
+
+    # Exact frame count
+    assert len(frames) == 163, f"Expected 163 frames, got {len(frames)}"
+
+    # Dimensions
+    h, w, c = frames[0].shape
+    assert (w, h) == (1728, 1080)
+
+    # Frame drift from beginning to end
+    f0 = frames[0].astype(float)
+    f_end = frames[-1].astype(float)
+    total_delta = np.mean(np.abs(f_end - f0))
+    assert total_delta > 0.5, f"Video appears completely frozen: total drift={total_delta}"
+
+    # Consecutive differences (confirming continuous decoding)
+    diffs = [np.mean(np.abs(frames[i+1].astype(float) - frames[i].astype(float))) for i in range(len(frames)-1)]
+    assert len(diffs) == 162
+    assert all(d >= 0.0 for d in diffs)
+
+

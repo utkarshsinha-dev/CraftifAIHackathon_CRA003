@@ -18,12 +18,16 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 
-def check_deliverable(label: str, pattern: str) -> bool:
-    matches = glob.glob(os.path.join(PROJECT_ROOT, pattern))
-    found = len(matches) > 0 and any(os.path.getsize(m) > 0 for m in matches)
+def check_deliverable(label: str, patterns: list) -> bool:
+    if isinstance(patterns, str):
+        patterns = [patterns]
+    matches = []
+    for pat in patterns:
+        matches.extend(glob.glob(os.path.join(PROJECT_ROOT, pat)))
+    found = len(matches) > 0 and any(os.path.getsize(m) > 0 for m in matches if os.path.isfile(m))
     status_str = "[READY]" if found else "[PENDING]"
-    details = f"({matches[0]})" if found else f"(pattern: {pattern})"
-    print(f"  {status_str:<10} {label:<28} {details}")
+    details = f"({matches[0]})" if found else f"(patterns: {', '.join(patterns)})"
+    print(f"  {status_str:<10} {label:<32} {details}")
     return found
 
 
@@ -33,6 +37,8 @@ def main():
     parser.add_argument("--output", default=os.path.join(PROJECT_ROOT, "data", "output", "incident_records.jsonl"), help="Incident output log")
     parser.add_argument("--stream", default=None, help="Input detection stream JSONL file (optional)")
     parser.add_argument("--pipeline-dir", default=os.path.join(PROJECT_ROOT, "generated"), help="Directory containing PipeGen generated pipeline")
+    parser.add_argument("--replay-pipegen", action="store_true", help="Replay genuine PipeGen metadata.json through Sentinel Safety Adapter")
+    parser.add_argument("--render-video", action="store_true", help="Render video overlay demo from authentic PipeGen detections")
     args = parser.parse_args()
 
     print("\n" + "=" * 80)
@@ -59,37 +65,35 @@ def main():
 
     # 3. Deliverables Status Check
     print("\n[INVENTORY] Hackathon Deliverables Status:")
-    ir_ok = check_deliverable("PipeGen Pipeline IR", "artifacts/ir/*ir*.*")
-    eng_ok = check_deliverable("TensorRT Engine (.engine)", "artifacts/benchmarks/*.engine")
-    bench_ok = check_deliverable("Benchmark Speed Report", "artifacts/benchmarks/speed_report.md")
-    pipe_ok = check_deliverable("Generated Pipeline Code", "generated/*")
+    ir_ok = check_deliverable("PipeGen Pipeline IR", ["artifacts/ir/*ir*.*", "artifacts/pipegen-export/*IR*.json"])
+    eng_ok = check_deliverable("TensorRT Engine (.plan / .engine)", ["artifacts/benchmarks/*.plan", "artifacts/benchmarks/*.engine", "artifacts/engines/*.plan"])
+    bench_ok = check_deliverable("Benchmark Speed Report", ["artifacts/benchmarks/speed_report.md"])
+    pipe_ok = check_deliverable("Generated Pipeline Code", ["generated/*", "artifacts/pipegen-export/pipeline/*"])
 
     print("\n" + "-" * 80)
 
-    # 4. Determine Execution Mode
-    pipe_sh = os.path.join(args.pipeline_dir, "run.sh")
-    pipe_py = os.path.join(args.pipeline_dir, "pipeline.py")
+    # 4. Execution Dispatch
+    pipegen_meta = os.path.join(PROJECT_ROOT, "artifacts", "pipegen-export", "output", "metadata.json")
 
-    # Mode A: Real Compiled Pipeline Execution
-    if os.path.isfile(pipe_sh) or os.path.isfile(pipe_py):
-        print(f"[ACTIVE] Found PipeGen Generated Pipeline in: {args.pipeline_dir}")
-        print("         Launching DeepStream perception pipeline with Sentinel Safety Adapter...")
+    # Mode 1: Render Video Overlay Demo
+    if args.render_video:
+        print("[ACTIVE] Video Render Mode: Generating verified demonstration overlay MP4 (sequential frames)...\n")
+        sys.stdout.flush()
         cmd = [
             sys.executable,
-            os.path.join(PROJECT_ROOT, "src", "sentinel_pipeline.py"),
+            os.path.join(PROJECT_ROOT, "scripts", "render_repaired_demo.py"),
             "--config", args.config,
-            "--output", args.output,
+            "--metadata", pipegen_meta,
         ]
-        if args.stream:
-            cmd.extend(["--stream", args.stream])
         subprocess.run(cmd)
 
-    # Mode B: Explicit Stream Ingestion Mode (e.g. piped or recorded metadata)
+    # Mode 2: Explicit Stream Ingestion Mode
     elif args.stream:
         if args.stream != "-" and not os.path.isfile(args.stream):
             print(f"[ERROR] Specified stream file does not exist: {args.stream}")
             sys.exit(1)
-        print(f"[ACTIVE] Ingestion Mode: Processing detection stream from '{args.stream}'...")
+        print(f"[ACTIVE] Ingestion Mode: Processing detection stream from '{args.stream}'...\n")
+        sys.stdout.flush()
         cmd = [
             sys.executable,
             os.path.join(PROJECT_ROOT, "src", "sentinel_pipeline.py"),
@@ -99,16 +103,26 @@ def main():
         ]
         subprocess.run(cmd)
 
-    # Mode C: Standby / Pre-Flight Mode
+    # Mode 3: Replay Genuine PipeGen Metadata
+    elif args.replay_pipegen or os.path.isfile(pipegen_meta):
+        print("[ACTIVE] PipeGen Perception Bridge Mode: Ingesting genuine DeepStream detections...\n")
+        sys.stdout.flush()
+        cmd = [
+            sys.executable,
+            os.path.join(PROJECT_ROOT, "scripts", "pipegen_to_sentinel.py"),
+            "--config", args.config,
+            "--output", args.output,
+            "--metadata", pipegen_meta,
+        ]
+        subprocess.run(cmd)
+
+    # Mode 4: Standby
     else:
-        print("[STANDBY] No active perception stream provided and generated/ is not yet populated.")
-        print("          Sentinel Vision AI is in verification standby.")
+        print("[STANDBY] Sentinel Vision AI is in verification standby.")
         print("\n[ACTIONABLE NEXT STEPS]:")
-        print("  1. Complete PipeGen pipeline compilation to populate 'generated/' and 'artifacts/'.")
-        print("  2. To run with a pre-recorded or live detection stream, pass:")
-        print(f"       python launch_demo.py --stream <path_to_detections.jsonl>")
-        print("  3. To run all automated integration tests, run:")
-        print("       python -m pytest tests/ -v")
+        print("  1. Replay authentic PipeGen detections: python launch_demo.py --replay-pipegen")
+        print("  2. Render visual demonstration video:   python launch_demo.py --render-video")
+        print("  3. Run all automated integration tests: python -m pytest tests/ -v")
 
     print("=" * 80 + "\n")
 
