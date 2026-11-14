@@ -23,7 +23,7 @@ def render_copilot_module(incidents: List[Dict[str, Any]]) -> None:
         st.markdown(
             """
             <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 6px 12px; margin-bottom: 12px; font-size: 11px; color: #34d399; font-family: 'JetBrains Mono', monospace;">
-              &bull; CONNECTED: Backend Safety Copilot (src/safety_copilot.py) Active
+              &bull; BACKEND SAFETY COPILOT CONNECTED (src/incident_service.py &bull; 100% Offline Perception Grounding)
             </div>
             """,
             unsafe_allow_html=True,
@@ -32,7 +32,7 @@ def render_copilot_module(incidents: List[Dict[str, Any]]) -> None:
         st.markdown(
             """
             <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 6px; padding: 6px 12px; margin-bottom: 12px; font-size: 11px; color: #fbbf24; font-family: 'JetBrains Mono', monospace;">
-              &bull; DETERMINISTIC EHS REASONING MODE: Backend Copilot module offline. Grounded strictly in authentic incident records.
+              &bull; DETERMINISTIC FALLBACK MODE (Local Rule-Based Grounding)
             </div>
             """,
             unsafe_allow_html=True,
@@ -45,6 +45,7 @@ def render_copilot_module(incidents: List[Dict[str, Any]]) -> None:
                 "role": "assistant",
                 "content": (
                     "**Welcome to Sentinel Safety Copilot.**\n\n"
+                    "I am directly connected to the backend incident intelligence engine. "
                     "I can assist you with perimeter security audits, worker exposure dwell analysis, "
                     "or incident forensics over the active DeepStream perception stream. Ask a question or select a prompt below."
                 ),
@@ -63,12 +64,14 @@ def render_copilot_module(incidents: List[Dict[str, Any]]) -> None:
             st.session_state["pending_prompt"] = "Show critical violations"
     with pill_col2:
         if st.button("⏱️ Longest zone occupancy", key="pill_occ"):
-            st.session_state["pending_prompt"] = "Which worker had the longest zone occupancy?"
+            st.session_state["pending_prompt"] = "Which worker stayed the longest?"
         if st.button("⚠️ Highest-risk incident", key="pill_risk"):
-            st.session_state["pending_prompt"] = "Explain the highest-risk incident"
+            st.session_state["pending_prompt"] = "Which incident has the highest risk?"
     with pill_col3:
         if st.button("📍 Summarize Zone 1 events", key="pill_z1"):
             st.session_state["pending_prompt"] = "Summarize events in Zone 1"
+        if st.button("🛡️ Recommended CAPA measures", key="pill_capa"):
+            st.session_state["pending_prompt"] = "What corrective actions could help prevent similar incidents?"
 
     # Display conversation history
     for msg in st.session_state["copilot_messages"]:

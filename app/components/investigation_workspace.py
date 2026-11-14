@@ -296,36 +296,48 @@ def render_investigation_workspace_module(incidents: List[Dict[str, Any]]) -> No
 
         # Risk Factors Card
         st.markdown("##### ⚠️ Risk Assessment Breakdown")
-        r_score = risk_data.get("risk_score", 85)
-        st.progress(r_score / 100.0)
-        is_auth = risk_data.get("is_authoritative", False)
-        prov_badge = (
-            "<span style='background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #34d399; padding: 2px 6px; border-radius: 4px; font-size: 10px;'>✅ AUTHORITATIVE BACKEND RISK SCORE</span>"
-            if is_auth
-            else "<span style='background: rgba(245, 158, 11, 0.15); border: 1px solid #f59e0b; color: #fbbf24; padding: 2px 6px; border-radius: 4px; font-size: 10px;'>⚠️ PROVISIONAL FRONTEND CALCULATION</span>"
-        )
-        st.markdown(
-            f"""
-            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; margin-bottom: 8px;">
-              <span><strong>Calculated Risk Score:</strong> <strong style="color: #f87171;">{r_score}/100</strong></span>
-              <div>{prov_badge} <span class="badge badge-critical">{risk_data.get('risk_tier', 'CRITICAL')}</span></div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        for factor in risk_data.get("factors", []):
+        r_score = risk_data.get("risk_score")
+        if r_score is not None:
+            st.progress(float(r_score) / 100.0)
+            is_auth = risk_data.get("is_authoritative", False)
+            prov_badge = (
+                "<span style='background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #34d399; padding: 2px 6px; border-radius: 4px; font-size: 10px;'>✅ AUTHORITATIVE BACKEND RISK SCORE</span>"
+                if is_auth
+                else "<span style='background: rgba(245, 158, 11, 0.15); border: 1px solid #f59e0b; color: #fbbf24; padding: 2px 6px; border-radius: 4px; font-size: 10px;'>⚠️ PROVISIONAL FRONTEND CALCULATION</span>"
+            )
             st.markdown(
                 f"""
-                <div style="border-left: 3px solid #f59e0b; padding-left: 8px; margin-bottom: 6px; font-size: 11px;">
-                  <strong>{factor.get('factor')}</strong> <span style="font-size: 9px; color: #94a3b8;">[{factor.get('weight')}]</span><br>
-                  <span style="color: #cbd5e1;">{factor.get('description')}</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; margin-bottom: 8px;">
+                  <span><strong>Calculated Risk Score:</strong> <strong style="color: #f87171;">{r_score}/100</strong></span>
+                  <div>{prov_badge} <span class="badge badge-critical">{risk_data.get('risk_tier', 'CRITICAL')}</span></div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-        st.caption(f"Provenance Source: {risk_data.get('source')}")
+            if risk_data.get("explanation"):
+                st.markdown(
+                    f"""
+                    <div style="background: rgba(239, 68, 68, 0.08); border-left: 3px solid #ef4444; padding: 6px 10px; margin-bottom: 8px; font-size: 11px; color: #cbd5e1;">
+                      <strong style="color: #f87171;">Backend Evaluation:</strong> {risk_data.get('explanation')}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            for factor in risk_data.get("factors", []):
+                st.markdown(
+                    f"""
+                    <div style="border-left: 3px solid #f59e0b; padding-left: 8px; margin-bottom: 6px; font-size: 11px;">
+                      <strong>{factor.get('factor')}</strong> <span style="font-size: 9px; color: #94a3b8;">[{factor.get('weight')}]</span><br>
+                      <span style="color: #cbd5e1;">{factor.get('description')}</span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            st.caption(f"Provenance Source: {risk_data.get('source')}")
+        else:
+            st.warning("Risk assessment unavailable: No backend risk telemetry recorded.")
 
         # Contextual Safety Copilot Queries
         st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)

@@ -14,11 +14,12 @@
 **Sentinel Vision AI 2.0** transforms raw edge perception into an interactive, industrial-grade **Safety Operations Command Center**. Built for EHS (Environmental Health and Safety) managers, security dispatchers, and plant supervisors, the platform delivers continuous spatial monitoring across hazardous machinery envelopes without human operator fatigue.
 
 ### Core Architecture & Capabilities
-- **Incident Investigation & Evidence Management Workspace:** Dedicated multi-step forensic workspace featuring synchronized video frames, 2D trajectory path kinematics, multi-factor risk scoring, contextual Safety Copilot Q&A, and full CAPA report generation.
+- **Incident Investigation & Evidence Management Workspace:** Dedicated multi-step forensic workspace featuring synchronized video frames, 2D trajectory path kinematics, authoritative backend risk scoring, contextual Safety Copilot Q&A, and full CAPA report generation.
 - **2D Trajectory Kinematics (Real DeepStream Data):** Reconstructs 160 continuous frames of tracked personnel movement directly from authentic `metadata.json`, with image-coordinate displacement and velocity mapping.
-- **Modular Backend Integration Adapter (`app/components/backend_adapter.py`):** Centralizes all data ingestion and reasoning contracts. Detects `src/safety_copilot.py` dynamically; operates seamlessly in `REAL_BACKEND_AI`, `DETERMINISTIC_FALLBACK`, or `MOCK_PREVIEW` modes.
+- **Full-Stack Backend Integration Adapter (`app/components/backend_adapter.py`):** Centralizes all service contracts, directly invoking Developer 1's authoritative backend service layer (`src/incident_service.py`, `src/risk_engine.py`, `src/safety_copilot.py`, and `scripts/generate_ehs_report.py`).
 - **Dynamic Intrusion State Coloring:** Tracked personnel bounding boxes dynamically transition between **GREEN (`SAFE`)** and **RED (`INCURSION`)** in real-time as their bottom-center ground contact $(x_{\text{center}}, y_{\text{max}})$ intersects restricted polygons.
 - **Zero-Latency In-Memory Video Caching:** Decorated video frame extraction with `@st.cache_data(max_entries=170)` for buttery-smooth timeline scrubbing across all 163 frames ($5.43\text{s}$).
+- **Authoritative EHS Audit Report Generation:** Direct one-click compilation of formal EHS investigation markdown reports from perception telemetry with embedded root-cause and CAPA recommendations.
 - **Safe Zone Staging & Automated Backups:** Prevents accidental overwriting of master configuration files. All polygon edits stage to `configs/restricted_zone_working.json` by default with explicit two-step confirmation required to commit to production.
 - **Categorized KPI Provenance:** Explicitly categorizes metrics into **Direct Measurements**, **Derived Metrics**, and **Unavailable/Decoupled Measurements** to comply strictly with product authenticity principles.
 - **100% Relative Path Portability:** Zero hardcoded machine paths; clone and execute on any standard Windows laptop.
@@ -87,13 +88,13 @@ When presenting Sentinel Vision AI 2.0 to judges, follow this authoritative 3-mi
    - Click *"❓ Why is this critical?"* or *"🛡️ Recommended CAPA?"*.
    - Demonstrate the contextual, incident-grounded explanation citing specific timestamps ($t=0.18\text{s}$) and zone IDs (`zone_restricted_01`).
 
-### Minute 3: CAPA Recording, Report Export & Safe Zone Calibration
-1. **Record Operator Observations & CAPA:**
+### Minute 3: CAPA Recording, EHS Audit Export & Safe Zone Calibration
+1. **Record Operator Observations & CAPA (Tab 2):**
    - Select Contributing Conditions (e.g. *Maintenance cart obstructing walkway*, *Floor hazard demarcation faded*).
    - Update Investigation Status to `Under Review` or `Resolved` (session-recorded).
-2. **Export the Complete Package:**
-   - Click **"📄 Download Markdown Report (.md)"** or **"📦 Download JSON Evidence Package"**.
-   - Show that the package contains all incident metadata, trajectory statistics, risk scores, operator notes, and regulatory disclaimers.
+2. **Export Individual & Facility-Wide Packages:**
+   - In Tab 2: Click **"📄 Download Markdown Report (.md)"** or **"📦 Download JSON Evidence Package"** for the selected incident.
+   - In Tab 4 (Safety Analytics): Click **"📥 Download Formal EHS Audit Report (.md)"** to export the comprehensive facility audit compiled by Developer 1's backend report engine.
 3. **Show Safe Zone Calibration (Tab 5):**
    - Show that changes stage safely to `restricted_zone_working.json` without mutating master production configurations until explicitly confirmed.
 

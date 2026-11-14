@@ -203,3 +203,34 @@ def render_analytics_charts(incidents: List[Dict[str, Any]], kpi_stats: Optional
                 - **Decoupled / Unavailable Data:** Biometric identity, sub-millisecond continuous sensor dwell, and direct industrial PLC hardware feedback are currently decoupled for software demonstration safety.
                 """
             )
+
+    # Official EHS Incident Audit Report Section
+    st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+    st.markdown("#### 📄 Authoritative EHS Incident Audit Report")
+    st.caption("Generated directly by the backend service (`src/incident_service.py` & `scripts/generate_ehs_report.py`) from authentic DeepStream perception telemetry.")
+
+    col_rep_btn, col_rep_info = st.columns([1, 2])
+    with col_rep_btn:
+        report_res = backend_adapter.generate_incident_report(incidents=incidents)
+        report_text = report_res.get("report_text", "")
+        st.download_button(
+            label="📥 Download Formal EHS Audit Report (.md)",
+            data=report_text,
+            file_name="EHS_INCIDENT_REPORT.md",
+            mime="text/markdown",
+            key="dl_official_ehs_report",
+            type="primary",
+        )
+    with col_rep_info:
+        st.markdown(
+            f"""
+            <div style="font-size: 11px; color: #94a3b8; font-family: 'JetBrains Mono', monospace; padding-top: 6px;">
+              &bull; <strong>Engine:</strong> <code>src/incident_service.py</code> (Developer 1)<br>
+              &bull; <strong>Scope:</strong> {len(incidents)} Verified Records &bull; Full Risk & Dwell Telemetry
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with st.expander("👁️ Preview Formal EHS Incident Report Content", expanded=False):
+        st.markdown(report_text)
