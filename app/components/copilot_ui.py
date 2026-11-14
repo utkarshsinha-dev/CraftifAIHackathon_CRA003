@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Sentinel Vision AI 2.0 — Safety Copilot UI Component
+Sentinel Vision — Safety Copilot UI Component
 Conversational EHS Copilot chat interface designed to integrate seamlessly
-with Developer 1's backend engine via BackendAdapter.
+with the backend incident intelligence engine via BackendAdapter.
 """
 
 from typing import Dict, List, Any, Optional
@@ -12,7 +12,7 @@ from app.components.backend_adapter import backend_adapter
 
 
 def render_copilot_module(incidents: List[Dict[str, Any]]) -> None:
-    """Renders the conversational Safety Copilot chat interface."""
+    """Renders the conversational enterprise Safety Copilot chat interface."""
     st.subheader("🤖 Sentinel Safety Copilot")
 
     # Detect backend readiness
@@ -22,7 +22,8 @@ def render_copilot_module(incidents: List[Dict[str, Any]]) -> None:
     if is_real_ai:
         st.markdown(
             """
-            <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 6px 12px; margin-bottom: 12px; font-size: 11px; color: #34d399; font-family: 'JetBrains Mono', monospace;">
+            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 6px; padding: 7px 14px; margin-bottom: 14px; font-size: 11.5px; color: #047857; font-family: 'JetBrains Mono', monospace; display: flex; align-items: center; gap: 8px;">
+              <span class="pulse-emerald"></span>
               &bull; BACKEND SAFETY COPILOT CONNECTED (src/incident_service.py &bull; 100% Offline Perception Grounding)
             </div>
             """,
@@ -31,7 +32,7 @@ def render_copilot_module(incidents: List[Dict[str, Any]]) -> None:
     else:
         st.markdown(
             """
-            <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 6px; padding: 6px 12px; margin-bottom: 12px; font-size: 11px; color: #fbbf24; font-family: 'JetBrains Mono', monospace;">
+            <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 6px; padding: 7px 14px; margin-bottom: 14px; font-size: 11.5px; color: #b45309; font-family: 'JetBrains Mono', monospace;">
               &bull; DETERMINISTIC FALLBACK MODE (Local Rule-Based Grounding)
             </div>
             """,
@@ -73,6 +74,8 @@ def render_copilot_module(incidents: List[Dict[str, Any]]) -> None:
         if st.button("🛡️ Recommended CAPA measures", key="pill_capa"):
             st.session_state["pending_prompt"] = "What corrective actions could help prevent similar incidents?"
 
+    st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+
     # Display conversation history
     for msg in st.session_state["copilot_messages"]:
         with st.chat_message(msg["role"]):
@@ -83,10 +86,10 @@ def render_copilot_module(incidents: List[Dict[str, Any]]) -> None:
             evidence = msg.get("evidence", [])
 
             if mode and mode != "SYSTEM":
-                badge_color = "#34d399" if "BACKEND" in str(mode) else ("#38bdf8" if "ADVISORY" in str(mode) else "#fbbf24")
+                badge_color = "#047857" if "BACKEND" in str(mode) else ("#0284c7" if "ADVISORY" in str(mode) else "#b45309")
                 st.markdown(
                     f"""
-                    <div style="font-size: 10px; color: {badge_color}; font-family: 'JetBrains Mono', monospace; margin-top: 4px;">
+                    <div style="font-size: 10.5px; color: {badge_color}; font-weight: 600; font-family: 'JetBrains Mono', monospace; margin-top: 4px;">
                       MODE: {mode}
                     </div>
                     """,
@@ -124,10 +127,10 @@ def render_copilot_module(incidents: List[Dict[str, Any]]) -> None:
 
         with st.chat_message("assistant"):
             st.markdown(result["text"])
-            badge_color = "#34d399" if "BACKEND" in str(result['mode']) else ("#38bdf8" if "ADVISORY" in str(result['mode']) else "#fbbf24")
+            badge_color = "#047857" if "BACKEND" in str(result['mode']) else ("#0284c7" if "ADVISORY" in str(result['mode']) else "#b45309")
             st.markdown(
                 f"""
-                <div style="font-size: 10px; color: {badge_color}; font-family: 'JetBrains Mono', monospace; margin-top: 4px;">
+                <div style="font-size: 10.5px; color: {badge_color}; font-weight: 600; font-family: 'JetBrains Mono', monospace; margin-top: 4px;">
                   MODE: {result['mode']}
                 </div>
                 """,

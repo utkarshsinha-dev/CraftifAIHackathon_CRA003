@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Sentinel Vision AI 2.0 — Video Player & Perception Replay Component
+Sentinel Vision — Video Player & Perception Replay Component
 Provides interactive playback, cached frame-accurate scrub inspection,
 real-time spatial zone containment coloring, and synchronized DeepStream telemetry.
 """
@@ -60,23 +60,32 @@ def get_available_video_path() -> Optional[str]:
 
 @st.cache_data(max_entries=170)
 def get_cached_video_frame(video_path: str, frame_idx: int) -> Optional[np.ndarray]:
-    """Caches decoded video frames in memory for zero-latency slider scrubbing."""
+    """
+    Extracts a specific frame index from video file with in-memory caching.
+    Supports instant, zero-latency scrubbing across all 163 frames.
+    """
     if not os.path.exists(video_path):
         return None
+
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         return None
+
     cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
     ret, frame = cap.read()
     cap.release()
+
     if ret:
         return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     return None
 
 
 def is_point_in_polygon(x: float, y: float, polygon: List[List[float]]) -> bool:
-    """Ray-casting point-in-polygon containment test for normalized coordinates."""
+    """Ray-casting algorithm for point-in-polygon containment test."""
     n = len(polygon)
+    if n < 3:
+        return False
+
     inside = False
     p1x, p1y = polygon[0]
     for i in range(1, n + 1):
@@ -150,7 +159,6 @@ def render_annotated_frame(
             raw_w = float(bbox.get("width", 0.0))
             raw_h = float(bbox.get("height", 0.0))
 
-            # If normalized (<= 1.0), scale by dimensions
             if raw_left <= 1.0 and raw_w <= 1.0 and raw_w > 0:
                 left = int(raw_left * w)
                 top = int(raw_top * h)
@@ -227,18 +235,65 @@ def render_annotated_frame(
 
 
 def render_video_player_module(incidents: List[Dict[str, Any]]) -> None:
-    """Renders the comprehensive video playback & frame scrubber module."""
-    st.subheader("📹 Perception Stream & Synchronized Replay")
+    """Renders the comprehensive enterprise video playback & frame scrubber module."""
+    st.subheader("📹 Live Perception Monitoring & Synchronized Replay")
 
-    st.markdown(
-        """
-        <div style="background: #111827; border: 1px solid #1e293b; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between; align-items: center;">
-          <span><strong>FEED:</strong> sample_office.mp4 (1728&times;1080 @ 30.00 FPS)</span>
-          <span class="status-pill status-replay">Recorded Perception Replay</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    # Compact Enterprise Information Panel
+    col_p1, col_p2, col_p3, col_p4, col_p5 = st.columns(5)
+    with col_p1:
+        st.markdown(
+            """
+            <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+              <div style="font-size:10.5px; font-weight:600; color:#64748b; text-transform:uppercase;">Camera Sensor</div>
+              <div style="font-size:13px; font-weight:700; color:#0f172a; margin-top:2px;">CAM-04 (Perimeter A)</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with col_p2:
+        st.markdown(
+            """
+            <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+              <div style="font-size:10.5px; font-weight:600; color:#64748b; text-transform:uppercase;">Stream Status</div>
+              <div style="font-size:13px; font-weight:700; color:#0369a1; margin-top:2px;">
+                <span class="pulse-emerald" style="display:inline-block; margin-right:4px;"></span> RECORDED REPLAY
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with col_p3:
+        st.markdown(
+            """
+            <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+              <div style="font-size:10.5px; font-weight:600; color:#64748b; text-transform:uppercase;">Processing FPS</div>
+              <div style="font-size:13px; font-weight:700; color:#0f172a; margin-top:2px;">30.00 FPS (1728×1080)</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with col_p4:
+        st.markdown(
+            """
+            <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+              <div style="font-size:10.5px; font-weight:600; color:#64748b; text-transform:uppercase;">Active Workers</div>
+              <div style="font-size:13px; font-weight:700; color:#6366f1; margin-top:2px;">2 Tracked (NvDCF)</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with col_p5:
+        st.markdown(
+            """
+            <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+              <div style="font-size:10.5px; font-weight:600; color:#64748b; text-transform:uppercase;">Current Incidents</div>
+              <div style="font-size:13px; font-weight:700; color:#ef4444; margin-top:2px;">2 Incursions Active</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
     video_path = get_available_video_path()
     if not video_path:
@@ -254,6 +309,9 @@ def render_video_player_module(incidents: List[Dict[str, Any]]) -> None:
         if "scrubber_slider" not in st.session_state:
             st.session_state["scrubber_slider"] = 3
 
+        def _set_scrubber_frame(target_f: int) -> None:
+            st.session_state["scrubber_slider"] = target_f
+
         col_ctrl1, col_ctrl2 = st.columns([3, 1])
 
         with col_ctrl1:
@@ -261,7 +319,6 @@ def render_video_player_module(incidents: List[Dict[str, Any]]) -> None:
                 "Timeline Scrubber (Frame Index / Time)",
                 min_value=0,
                 max_value=total_frames - 1,
-                value=st.session_state["scrubber_slider"],
                 step=1,
                 format="Frame %d",
                 key="scrubber_slider",
@@ -273,17 +330,11 @@ def render_video_player_module(incidents: List[Dict[str, Any]]) -> None:
             st.markdown("**Quick Breach Navigation:**")
             col_b1, col_b2, col_b3 = st.columns(3)
             with col_b1:
-                if st.button("F3 (Entry)", key="btn_f3"):
-                    st.session_state["scrubber_slider"] = 3
-                    st.rerun()
+                st.button("F3 (Entry)", key="btn_f3", on_click=_set_scrubber_frame, args=(3,))
             with col_b2:
-                if st.button("F64", key="btn_f64"):
-                    st.session_state["scrubber_slider"] = 64
-                    st.rerun()
+                st.button("F64", key="btn_f64", on_click=_set_scrubber_frame, args=(64,))
             with col_b3:
-                if st.button("F125", key="btn_f125"):
-                    st.session_state["scrubber_slider"] = 125
-                    st.rerun()
+                st.button("F125", key="btn_f125", on_click=_set_scrubber_frame, args=(125,))
 
         # Load and render frame
         meta_dict = load_detection_metadata()

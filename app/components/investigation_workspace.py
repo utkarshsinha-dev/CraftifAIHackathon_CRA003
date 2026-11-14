@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Sentinel Vision AI 2.0 — Advanced Incident Investigation Workspace
+Sentinel Vision — Advanced Incident Investigation Workspace
 Provides end-to-end incident forensics, 2D trajectory visualization,
 risk factor breakdown, contextual Copilot interrogation, and CAPA report export.
 """
@@ -34,21 +34,20 @@ def get_zones_for_map() -> List[Dict[str, Any]]:
 
 
 def render_trajectory_chart(trajectory: Dict[str, Any], current_incident: Dict[str, Any], zones: List[Dict[str, Any]]) -> go.Figure:
-    """Renders 2D spatial trajectory map in normalized image-coordinate space."""
+    """Renders 2D spatial trajectory map in normalized image-coordinate space with enterprise styling."""
     fig = go.Figure()
 
     # 1. Plot Restricted Zones
     for zone in zones:
         poly = zone.get("polygon", [])
         if len(poly) >= 3:
-            # Close the polygon loop for plotting
             poly_closed = poly + [poly[0]]
             zx = [p[0] for p in poly_closed]
             zy = [p[1] for p in poly_closed]
 
             sev = zone.get("severity", "CRITICAL")
-            fill_col = "rgba(239, 68, 68, 0.15)" if sev == "CRITICAL" else "rgba(245, 158, 11, 0.15)"
-            line_col = "rgba(239, 68, 68, 0.8)" if sev == "CRITICAL" else "rgba(245, 158, 11, 0.8)"
+            fill_col = "rgba(239, 68, 68, 0.12)" if sev == "CRITICAL" else "rgba(245, 158, 11, 0.12)"
+            line_col = "rgba(239, 68, 68, 0.85)" if sev == "CRITICAL" else "rgba(245, 158, 11, 0.85)"
 
             fig.add_trace(go.Scatter(
                 x=zx,
@@ -72,8 +71,8 @@ def render_trajectory_chart(trajectory: Dict[str, Any], current_incident: Dict[s
             x=px,
             y=py,
             mode="lines+markers",
-            line=dict(color="#38bdf8", width=2),
-            marker=dict(size=4, color="#0284c7"),
+            line=dict(color="#0284c7", width=2),
+            marker=dict(size=4, color="#0369a1"),
             name=f"Person #{trajectory.get('track_id')} Path",
             text=hover_texts,
             hoverinfo="text+x+y",
@@ -94,7 +93,7 @@ def render_trajectory_chart(trajectory: Dict[str, Any], current_incident: Dict[s
             x=[px[-1]],
             y=[py[-1]],
             mode="markers+text",
-            marker=dict(size=10, color="#a855f7", symbol="square"),
+            marker=dict(size=10, color="#6366f1", symbol="square"),
             text=["End F#162"],
             textposition="bottom right",
             name="Track Terminus",
@@ -118,18 +117,18 @@ def render_trajectory_chart(trajectory: Dict[str, Any], current_incident: Dict[s
         xaxis=dict(
             title="Normalized X Coordinate [0.0 - 1.0]",
             range=[0.0, 1.0],
-            gridcolor="#1e293b",
+            gridcolor="#f1f5f9",
             zeroline=False,
         ),
         yaxis=dict(
             title="Normalized Y Coordinate [0.0 - 1.0]",
             range=[1.0, 0.0],  # Invert Y to match computer vision image coordinates (origin top-left)
-            gridcolor="#1e293b",
+            gridcolor="#f1f5f9",
             zeroline=False,
         ),
-        paper_bgcolor="#111827",
-        plot_bgcolor="#111827",
-        font=dict(color="#f8fafc", family="Inter"),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#334155", family="Inter"),
         margin=dict(l=40, r=20, t=40, b=40),
         height=320,
         showlegend=True,
@@ -142,11 +141,11 @@ def render_investigation_workspace_module(incidents: List[Dict[str, Any]]) -> No
     """Renders the comprehensive Incident Investigation & Evidence Management Workspace."""
     st.markdown(
         """
-        <div style="background: linear-gradient(135deg, #1e1b4b 0%, #1e293b 60%, #0f172a 100%); border: 1px solid #3730a3; border-radius: 8px; padding: 14px 18px; margin-bottom: 16px;">
-          <div style="font-size: 16px; font-weight: 700; color: #e0e7ff; margin-bottom: 4px;">
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+          <div style="font-size: 17px; font-weight: 700; color: #0f172a; margin-bottom: 4px;">
             🕵️ EHS Incident Investigation & Evidence Management Workspace
           </div>
-          <div style="font-size: 11px; color: #94a3b8; font-family: 'JetBrains Mono', monospace;">
+          <div style="font-size: 12px; color: #64748b;">
             Step-by-Step Forensic Analysis &bull; Evidence Synchronization &bull; Trajectory Kinematics &bull; Corrective Actions (CAPA)
           </div>
         </div>
@@ -162,9 +161,9 @@ def render_investigation_workspace_module(incidents: List[Dict[str, Any]]) -> No
     active_dataset = backend_adapter.get_copilot_status().get("active_dataset", "data/output/incident_records.jsonl")
     st.markdown(
         f"""
-        <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; padding: 6px 12px; margin-bottom: 12px; font-size: 11px; font-family: 'JetBrains Mono', monospace; display: flex; justify-content: space-between; align-items: center;">
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 7px 14px; margin-bottom: 12px; font-size: 11.5px; font-family: 'JetBrains Mono', monospace; display: flex; justify-content: space-between; align-items: center;">
           <span>📁 <strong>ACTIVE DATASET:</strong> <code>{active_dataset}</code> ({len(incidents)} Verified Records)</span>
-          <span style="color: #94a3b8;">Provenance: DeepStream 7.1 &bull; 2.0s Cooldown Suppression</span>
+          <span style="color: #64748b;">Provenance: DeepStream 7.1 &bull; 2.0s Cooldown State Machine</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -172,13 +171,13 @@ def render_investigation_workspace_module(incidents: List[Dict[str, Any]]) -> No
 
     st.markdown(
         """
-        <div style="display: flex; gap: 6px; margin-bottom: 16px; font-size: 10px; font-family: 'JetBrains Mono', monospace;">
-          <span style="background: #1e293b; padding: 4px 8px; border-radius: 4px; color: #38bdf8;">1. Select Incident</span> &rarr;
-          <span style="background: #1e293b; padding: 4px 8px; border-radius: 4px; color: #38bdf8;">2. Review Visual Evidence</span> &rarr;
-          <span style="background: #1e293b; padding: 4px 8px; border-radius: 4px; color: #38bdf8;">3. Risk & Trajectory</span> &rarr;
-          <span style="background: #1e293b; padding: 4px 8px; border-radius: 4px; color: #38bdf8;">4. Copilot Interrogation</span> &rarr;
-          <span style="background: #1e293b; padding: 4px 8px; border-radius: 4px; color: #38bdf8;">5. Record CAPA Notes</span> &rarr;
-          <span style="background: #1e293b; padding: 4px 8px; border-radius: 4px; color: #34d399;">6. Export Package</span>
+        <div style="display: flex; gap: 6px; margin-bottom: 16px; font-size: 11px; font-family: 'JetBrains Mono', monospace;">
+          <span style="background: #f1f5f9; border: 1px solid #e2e8f0; padding: 4px 8px; border-radius: 4px; color: #0284c7;">1. Select Incident</span> &rarr;
+          <span style="background: #f1f5f9; border: 1px solid #e2e8f0; padding: 4px 8px; border-radius: 4px; color: #0284c7;">2. Review Visual Evidence</span> &rarr;
+          <span style="background: #f1f5f9; border: 1px solid #e2e8f0; padding: 4px 8px; border-radius: 4px; color: #0284c7;">3. Risk & Trajectory</span> &rarr;
+          <span style="background: #f1f5f9; border: 1px solid #e2e8f0; padding: 4px 8px; border-radius: 4px; color: #0284c7;">4. Copilot Interrogation</span> &rarr;
+          <span style="background: #f1f5f9; border: 1px solid #e2e8f0; padding: 4px 8px; border-radius: 4px; color: #0284c7;">5. Record CAPA Notes</span> &rarr;
+          <span style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 8px; border-radius: 4px; color: #047857;">6. Export Package</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -227,15 +226,16 @@ def render_investigation_workspace_module(incidents: List[Dict[str, Any]]) -> No
         # Synchronization with Master Video Player
         col_jump, col_stat = st.columns([2, 1])
         with col_jump:
-            if st.button(f"🎥 Jump to Frame #{frame_idx} in Video Player", key=f"inv_jump_{selected_idx}", type="secondary"):
+            if st.button(f"🎥 View in Monitoring (F#{frame_idx})", key=f"inv_jump_{selected_idx}", type="secondary"):
                 st.session_state["scrubber_slider"] = frame_idx
-                st.toast(f"Synchronized Video Player to Frame #{frame_idx}")
-                st.info(f"Synchronized! Open Tab 1 to scrub from Frame #{frame_idx}.")
+                st.session_state["sidebar_nav"] = "Live Monitoring"
+                st.toast(f"Synchronized Monitoring to Frame #{frame_idx}")
+                st.rerun()
 
         with col_stat:
             st.markdown(
                 f"""
-                <div style="font-size: 11px; text-align: right; color: #94a3b8; font-family: 'JetBrains Mono', monospace; padding-top: 6px;">
+                <div style="font-size: 11px; text-align: right; color: #64748b; font-family: 'JetBrains Mono', monospace; padding-top: 6px;">
                   Footprint: ({current_inc.get('ground_contact_point', [0,0])[0]:.3f}, {current_inc.get('ground_contact_point', [0,0])[1]:.3f})
                 </div>
                 """,
@@ -255,8 +255,8 @@ def render_investigation_workspace_module(incidents: List[Dict[str, Any]]) -> No
 
         st.markdown(
             f"""
-            <div style="background: #111827; border: 1px solid #1e293b; border-radius: 6px; padding: 10px 14px; font-size: 11px; font-family: 'JetBrains Mono', monospace; color: #94a3b8;">
-              <div style="color: #38bdf8; font-weight: bold; margin-bottom: 4px;">🎯 TRAJECTORY INTEGRITY & KINEMATICS</div>
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 14px; font-size: 11px; font-family: 'JetBrains Mono', monospace; color: #475569; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+              <div style="color: #0284c7; font-weight: bold; margin-bottom: 4px;">🎯 TRAJECTORY INTEGRITY & KINEMATICS</div>
               &bull; <strong>Kinematics:</strong> {trajectory_data.get('movement_classification')}<br>
               &bull; <strong>Observed Points:</strong> {obs_pts} frames | <strong>Missing Prior to Lock:</strong> {prior_miss} (F#0-2) | <strong>Sequence Gaps:</strong> {seq_gaps} | <strong>Interpolated:</strong> {interp_pts}<br>
               &bull; <strong>Path Displacement:</strong> {trajectory_data.get('net_displacement_norm', 0.0)} units | <strong>Mean Velocity:</strong> {trajectory_data.get('mean_velocity_norm_per_sec', 0.0)} units/sec<br>
@@ -277,7 +277,7 @@ def render_investigation_workspace_module(incidents: List[Dict[str, Any]]) -> No
             st.write(f"**{current_inc.get('event_type')}**")
         with c_o2:
             st.caption("Severity Level")
-            sev_color = "#f87171" if current_inc.get("severity") == "CRITICAL" else "#fbbf24"
+            sev_color = "#ef4444" if current_inc.get("severity") == "CRITICAL" else "#f59e0b"
             st.markdown(f"<strong style='color:{sev_color};'>{current_inc.get('severity')}</strong>", unsafe_allow_html=True)
         with c_o3:
             st.caption("Confidence")
@@ -285,7 +285,7 @@ def render_investigation_workspace_module(incidents: List[Dict[str, Any]]) -> No
 
         st.markdown(
             f"""
-            <div style="background: #111827; border: 1px solid #1e293b; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 11px;">
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 11.5px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
               <strong>Incident ID:</strong> <code>{inc_id}</code><br>
               <strong>Hazard Zone:</strong> {current_inc.get('zone_name')} (<code>{current_inc.get('zone_id')}</code>)<br>
               <strong>Timing:</strong> Timestamp: <code>{current_inc.get('frame_index', 0)/30.0016:.2f}s</code> (Frame #{frame_idx})
@@ -301,15 +301,15 @@ def render_investigation_workspace_module(incidents: List[Dict[str, Any]]) -> No
             st.progress(float(r_score) / 100.0)
             is_auth = risk_data.get("is_authoritative", False)
             prov_badge = (
-                "<span style='background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #34d399; padding: 2px 6px; border-radius: 4px; font-size: 10px;'>✅ AUTHORITATIVE BACKEND RISK SCORE</span>"
+                "<span style='background: rgba(16, 185, 129, 0.12); border: 1px solid #10b981; color: #047857; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;'>✅ AUTHORITATIVE BACKEND RISK SCORE</span>"
                 if is_auth
-                else "<span style='background: rgba(245, 158, 11, 0.15); border: 1px solid #f59e0b; color: #fbbf24; padding: 2px 6px; border-radius: 4px; font-size: 10px;'>⚠️ PROVISIONAL FRONTEND CALCULATION</span>"
+                else "<span style='background: rgba(245, 158, 11, 0.12); border: 1px solid #f59e0b; color: #b45309; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;'>⚠️ PROVISIONAL CALCULATION</span>"
             )
             st.markdown(
                 f"""
-                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; margin-bottom: 8px;">
-                  <span><strong>Calculated Risk Score:</strong> <strong style="color: #f87171;">{r_score}/100</strong></span>
-                  <div>{prov_badge} <span class="badge badge-critical">{risk_data.get('risk_tier', 'CRITICAL')}</span></div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; margin-bottom: 8px;">
+                  <span><strong>Calculated Risk Score:</strong> <strong style="color: #ef4444; font-size: 14px;">{r_score}/100</strong></span>
+                  <div>{prov_badge} <span style="background:rgba(239, 68, 68, 0.1); color:#b91c1c; border:1px solid rgba(239,68,68,0.25); border-radius:4px; padding:2px 6px; font-size:10px; font-weight:700;">{risk_data.get('risk_tier', 'CRITICAL')}</span></div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -318,8 +318,8 @@ def render_investigation_workspace_module(incidents: List[Dict[str, Any]]) -> No
             if risk_data.get("explanation"):
                 st.markdown(
                     f"""
-                    <div style="background: rgba(239, 68, 68, 0.08); border-left: 3px solid #ef4444; padding: 6px 10px; margin-bottom: 8px; font-size: 11px; color: #cbd5e1;">
-                      <strong style="color: #f87171;">Backend Evaluation:</strong> {risk_data.get('explanation')}
+                    <div style="background: rgba(239, 68, 68, 0.05); border-left: 3px solid #ef4444; padding: 8px 12px; margin-bottom: 8px; font-size: 11.5px; color: #334155;">
+                      <strong style="color: #dc2626;">Backend Evaluation:</strong> {risk_data.get('explanation')}
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -328,9 +328,9 @@ def render_investigation_workspace_module(incidents: List[Dict[str, Any]]) -> No
             for factor in risk_data.get("factors", []):
                 st.markdown(
                     f"""
-                    <div style="border-left: 3px solid #f59e0b; padding-left: 8px; margin-bottom: 6px; font-size: 11px;">
-                      <strong>{factor.get('factor')}</strong> <span style="font-size: 9px; color: #94a3b8;">[{factor.get('weight')}]</span><br>
-                      <span style="color: #cbd5e1;">{factor.get('description')}</span>
+                    <div style="border-left: 3px solid #f59e0b; padding-left: 8px; margin-bottom: 6px; font-size: 11.5px;">
+                      <strong>{factor.get('factor')}</strong> <span style="font-size: 9.5px; color: #64748b;">[{factor.get('weight')}]</span><br>
+                      <span style="color: #475569;">{factor.get('description')}</span>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -431,7 +431,7 @@ def render_investigation_workspace_module(incidents: List[Dict[str, Any]]) -> No
 
     st.markdown(
         """
-        <div style="background: rgba(245, 158, 11, 0.08); border-left: 3px solid #f59e0b; padding: 6px 12px; font-size: 10px; color: #fbbf24; font-family: 'JetBrains Mono', monospace; margin-bottom: 14px;">
+        <div style="background: rgba(245, 158, 11, 0.08); border-left: 3px solid #f59e0b; padding: 8px 12px; font-size: 11px; color: #b45309; font-family: 'JetBrains Mono', monospace; margin-bottom: 14px;">
           DISCLAIMER: Investigation notes, statuses, and CAPA recommendations are stored within the active browser session for demonstration. Actions are advisory and have not been executed.
         </div>
         """,
