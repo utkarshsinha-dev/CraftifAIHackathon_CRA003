@@ -2,130 +2,28 @@
 """
 Sentinel Vision AI 2.0 — Safety Copilot UI Component
 Conversational EHS Copilot chat interface designed to integrate seamlessly
-with the backend engine (src/safety_copilot.py) while handling offline modes gracefully.
+with Developer 1's backend engine via BackendAdapter.
 """
 
 from typing import Dict, List, Any, Optional
 import streamlit as st
 
-
-def query_backend_copilot(question: str, incidents: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Attempts to query the backend Copilot module (src/safety_copilot.py)
-    via agreed python contracts. Falls back to deterministic local analysis if offline.
-    """
-    # 1. Check for backend implementation in src/
-    try:
-        from src.safety_copilot import answer_question  # type: ignore
-        response_text = answer_question(question)
-        return {
-            "source": "BACKEND_COPILOT",
-            "text": response_text,
-            "evidence": [],
-        }
-    except (ImportError, ModuleNotFoundError, AttributeError):
-        pass
-
-    # 2. Transparent local fallback reasoning over authentic incident records
-    # Marked explicitly as local preview data per design specification
-    q_lower = question.lower()
-
-    if "summarize all" in q_lower or "summary" in q_lower:
-        total = len(incidents)
-        critical = sum(1 for inc in incidents if inc.get("severity") == "CRITICAL")
-        tracks = set(inc.get("track_id") for inc in incidents)
-        text = (
-            f"**Industrial Safety Incident Summary:**\n\n"
-            f"- **Total Incident Records:** {total} verified events\n"
-            f"- **High-Severity Breaches:** {critical} CRITICAL alerts\n"
-            f"- **Involved Track IDs:** {', '.join([f'Person #{t}' for t in tracks])}\n"
-            f"- **Active Zone:** Heavy Equipment Perimeter A (`zone_restricted_01`)\n"
-            f"- **Timeline Progression:** Initial breach occurred at frame 3 ($t=0.18\\text{{s}}$) followed by periodic occupancy tracking at frames 64 ($t=2.21\\text{{s}}$) and 125 ($t=4.24\\text{{s}}$)."
-        )
-        return {
-            "source": "LOCAL_FALLBACK",
-            "text": text,
-            "evidence": [inc.get("incident_id") for inc in incidents[:3]],
-        }
-
-    elif "longest" in q_lower or "occupancy" in q_lower:
-        text = (
-            "**Zone Occupancy & Dwell Analysis:**\n\n"
-            "Both **Person #0** and **Person #1** exhibited equal prolonged dwell duration (~4.24 seconds) inside `Heavy Equipment Perimeter A`. Both personnel entered simultaneously at frame 3 ($t=0.18\\text{s}$) and remained within the hazardous exclusion envelope across frames 64 and 125 without exiting before clip completion."
-        )
-        return {
-            "source": "LOCAL_FALLBACK",
-            "text": text,
-            "evidence": [inc.get("incident_id") for inc in incidents if "OCCUPANCY" in inc.get("event_type", "")],
-        }
-
-    elif "critical" in q_lower or "violation" in q_lower:
-        crit_incidents = [inc for inc in incidents if inc.get("severity") == "CRITICAL"]
-        text = (
-            f"**Critical Exclusion Violations ({len(crit_incidents)} Detected):**\n\n"
-            "100% of recorded incidents in the current audit dataset are classified as **CRITICAL** due to unauthorized entry into `Heavy Equipment Perimeter A` (`zone_restricted_01`). Both Person #0 (confidence 52.8%) and Person #1 (confidence 66.8%) crossed the physical safety perimeter."
-        )
-        return {
-            "source": "LOCAL_FALLBACK",
-            "text": text,
-            "evidence": [inc.get("incident_id") for inc in crit_incidents],
-        }
-
-    elif "highest-risk" in q_lower or "risk" in q_lower:
-        text = (
-            "**Highest Risk Event Assessment:**\n\n"
-            "The highest-risk event was the **Initial Perimeter Incursion at Frame 3 ($t=0.176\\text{s}$)** involving simultaneous dual breach by Person #0 and Person #1. The close proximity of both personnel to heavy machinery represents severe collision and entanglement hazard."
-        )
-        return {
-            "source": "LOCAL_FALLBACK",
-            "text": text,
-            "evidence": [incidents[0].get("incident_id") if incidents else "N/A"],
-        }
-
-    elif "zone 1" in q_lower or "perimeter a" in q_lower:
-        text = (
-            "**Zone 1 (`Heavy Equipment Perimeter A`) Status:**\n\n"
-            "- **Severity Configuration:** CRITICAL\n"
-            "- **Configured Polygon:** 4 Vertices normalized $[(0.20, 0.45), (0.65, 0.45), (0.65, 0.90), (0.20, 0.90)]$\n"
-            "- **Cooldown Interval:** 2.0 Seconds\n"
-            "- **Total Violations:** 6 Incidents (2 Entry, 4 Occupancy)"
-        )
-        return {
-            "source": "LOCAL_FALLBACK",
-            "text": text,
-            "evidence": [inc.get("incident_id") for inc in incidents],
-        }
-
-    else:
-        text = (
-            f"**Sentinel Safety Copilot Analysis:**\n\n"
-            f"Regarding your query: *\"{question}\"*\n"
-            f"The perception system continuously tracks personnel ground contact footprints against configured restricted zones. There are currently {len(incidents)} verified incident records available for inspection."
-        )
-        return {
-            "source": "LOCAL_FALLBACK",
-            "text": text,
-            "evidence": [],
-        }
+from app.components.backend_adapter import backend_adapter
 
 
 def render_copilot_module(incidents: List[Dict[str, Any]]) -> None:
     """Renders the conversational Safety Copilot chat interface."""
     st.subheader("🤖 Sentinel Safety Copilot")
 
-    # Status banner for backend availability
-    backend_ready = False
-    try:
-        import src.safety_copilot  # type: ignore
-        backend_ready = True
-    except Exception:
-        backend_ready = False
+    # Detect backend readiness
+    backend_status = backend_adapter.get_copilot_status()
+    is_real_ai = (backend_status["status"] == "AVAILABLE" and backend_status["has_answer_question"])
 
-    if backend_ready:
+    if is_real_ai:
         st.markdown(
             """
             <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 6px 12px; margin-bottom: 12px; font-size: 11px; color: #34d399; font-family: 'JetBrains Mono', monospace;">
-              CONNECTED: Backend Safety Copilot (src/safety_copilot.py) Online
+              &bull; CONNECTED: Backend Safety Copilot (src/safety_copilot.py) Active
             </div>
             """,
             unsafe_allow_html=True,
@@ -134,7 +32,7 @@ def render_copilot_module(incidents: List[Dict[str, Any]]) -> None:
         st.markdown(
             """
             <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 6px; padding: 6px 12px; margin-bottom: 12px; font-size: 11px; color: #fbbf24; font-family: 'JetBrains Mono', monospace;">
-              DEVELOPMENT PREVIEW: Backend Copilot module offline. Operating in deterministic local safety reasoning mode.
+              &bull; DETERMINISTIC EHS REASONING MODE: Backend Copilot module offline. Grounded strictly in authentic incident records.
             </div>
             """,
             unsafe_allow_html=True,
@@ -145,8 +43,12 @@ def render_copilot_module(incidents: List[Dict[str, Any]]) -> None:
         st.session_state["copilot_messages"] = [
             {
                 "role": "assistant",
-                "content": "Hello, I am Sentinel Safety Copilot. How can I assist you with perimeter security, EHS audit investigations, or incident forensics today?",
-                "source": "SYSTEM",
+                "content": (
+                    "**Welcome to Sentinel Safety Copilot.**\n\n"
+                    "I can assist you with perimeter security audits, worker exposure dwell analysis, "
+                    "or incident forensics over the active DeepStream perception stream. Ask a question or select a prompt below."
+                ),
+                "mode": "SYSTEM",
                 "evidence": [],
             }
         ]
@@ -172,30 +74,63 @@ def render_copilot_module(incidents: List[Dict[str, Any]]) -> None:
     for msg in st.session_state["copilot_messages"]:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
-            if msg.get("evidence"):
-                st.caption(f"Referenced Evidence: `{', '.join([str(e)[:8] + '...' for e in msg['evidence'][:3]])}`")
+
+            # Provenance badge & evidence references
+            mode = msg.get("mode", "")
+            evidence = msg.get("evidence", [])
+
+            if mode and mode != "SYSTEM":
+                badge_color = "#34d399" if mode == "REAL_BACKEND_AI" else "#fbbf24"
+                st.markdown(
+                    f"""
+                    <div style="font-size: 10px; color: {badge_color}; font-family: 'JetBrains Mono', monospace; margin-top: 4px;">
+                      MODE: {mode}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            if evidence:
+                st.caption(f"Referenced Incident IDs: `{', '.join([str(e)[:8] + '...' for e in evidence[:3]])}`")
 
     # Chat Input Box
     user_input = st.chat_input("Ask a question regarding safety incidents, workers, or zone violations...")
     prompt_to_send = user_input or st.session_state.pop("pending_prompt", None)
 
     if prompt_to_send:
-        # User message
-        st.session_state["copilot_messages"].append({"role": "user", "content": prompt_to_send})
+        # Append User Message
+        st.session_state["copilot_messages"].append({
+            "role": "user",
+            "content": prompt_to_send,
+            "mode": "USER",
+            "evidence": [],
+        })
         with st.chat_message("user"):
             st.markdown(prompt_to_send)
 
-        # Assistant response
-        result = query_backend_copilot(prompt_to_send, incidents)
+        # Assistant Processing with Loading Spinner
+        with st.spinner("Evaluating perception stream and spatial incident records..."):
+            result = backend_adapter.answer_question(prompt_to_send, incidents)
+
         st.session_state["copilot_messages"].append({
             "role": "assistant",
             "content": result["text"],
-            "source": result["source"],
+            "mode": result["mode"],
             "evidence": result.get("evidence", []),
         })
 
         with st.chat_message("assistant"):
             st.markdown(result["text"])
+            badge_color = "#34d399" if result["mode"] == "REAL_BACKEND_AI" else "#fbbf24"
+            st.markdown(
+                f"""
+                <div style="font-size: 10px; color: {badge_color}; font-family: 'JetBrains Mono', monospace; margin-top: 4px;">
+                  MODE: {result['mode']}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
             if result.get("evidence"):
-                st.caption(f"Referenced Evidence: `{', '.join([str(e)[:8] + '...' for e in result['evidence'][:3]])}`")
+                st.caption(f"Referenced Incident IDs: `{', '.join([str(e)[:8] + '...' for e in result['evidence'][:3]])}`")
+
         st.rerun()

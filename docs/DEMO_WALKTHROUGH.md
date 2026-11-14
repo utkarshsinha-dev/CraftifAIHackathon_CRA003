@@ -1,149 +1,135 @@
 # Sentinel Vision AI 2.0 — Safety Operations Command Center
-## Comprehensive Demonstration Walkthrough & Operator Guide
+## Comprehensive Demonstration Walkthrough, QA Hardening & Operator Guide
 
 > **Project:** Sentinel Vision AI 2.0  
 > **Track:** Track A — CraftifAI Physical AI Hackathon (PipeGen Perception)  
 > **Branch:** `feat/safety-dashboard`  
-> **Role:** Developer 2 (Frontend / Full-Stack Operations Command Center)  
-> **System Architecture:** NVIDIA DeepStream 7.1 &bull; TensorRT 10.3 YOLO11s &bull; NvDCF Multi-Object Tracking &bull; Streamlit Interactive Command Center  
+> **Role:** Senior QA Engineer, Frontend Architect & Integration Engineer (Developer 2)
+> **System Architecture:** NVIDIA DeepStream 7.1 &bull; TensorRT 10.3 YOLO11s &bull; NvDCF Multi-Object Tracking &bull; Streamlit Command Center
 
 ---
 
-## 1. Executive Overview
+## 1. Executive Summary & Hardening Status
 
-**Sentinel Vision AI 2.0** transforms raw edge perception into an interactive, industrial-grade **Safety Operations Command Center**. Built for EHS (Environmental Health and Safety) managers, security dispatchers, and plant supervisors, the platform delivers continuous spatial monitoring across hazardous machinery envelopes without human fatigue.
+**Sentinel Vision AI 2.0** transforms edge vision perception into an industrial-grade **Safety Operations Command Center**. Built for EHS (Environmental Health and Safety) managers, security dispatchers, and plant supervisors, the platform delivers continuous spatial monitoring across hazardous machinery envelopes without human operator fatigue.
 
-### Core Capabilities
-- **Synchronized Video & Telemetry Replay:** Inspect surveillance footage frame-by-frame with dynamic bounding boxes, persistent Track IDs, and bottom-center ground contact points $(x_{\text{center}}, y_{\text{max}})$.
-- **Dynamic 2D Polygon Zone Calibration:** Calibrate and edit restricted exclusion zones directly over authentic reference video frames with normalized $[0.0, 1.0]$ coordinate validation and automatic configuration backups (`.bak`).
-- **Throttled Incident Auditing:** Review machine-readable incident records emitted by DeepStream, filtering 320 raw detections down to 6 actionable alerts conforming strictly to JSON Schema.
-- **Forensic Investigation & Evidence Inspection:** Filter by severity, zone, and personnel track ID, with instant visual snapshots of security breaches.
-- **Conversational EHS Safety Copilot:** Ask natural language questions regarding safety metrics, risk assessments, and worker dwell time with contract-ready integration to `src/safety_copilot.py`.
+### Frontend Hardening Accomplishments
+- **Modular Backend Integration Adapter (`app/components/backend_adapter.py`):** Centralizes all data ingestion and reasoning contracts. Detects `src/safety_copilot.py` dynamically; operates seamlessly in `REAL_BACKEND_AI`, `DETERMINISTIC_FALLBACK`, or `MOCK_PREVIEW` modes.
+- **Dynamic Intrusion State Coloring:** Tracked personnel bounding boxes dynamically transition between **GREEN (`SAFE`)** and **RED (`INCURSION`)** in real-time as their bottom-center ground contact $(x_{\text{center}}, y_{\text{max}})$ intersects restricted polygons.
+- **Zero-Latency In-Memory Video Caching:** Decorated video frame extraction with `@st.cache_data(max_entries=170)` for buttery-smooth timeline scrubbing across all 163 frames ($5.43\text{s}$).
+- **Safe Zone Staging & Automated Backups:** Prevents accidental overwriting of master configuration files. All polygon edits stage to `configs/restricted_zone_working.json` by default with explicit two-step confirmation required to commit to production.
+- **Categorized KPI Provenance:** Explicitly categorizes metrics into **Direct Measurements**, **Derived Metrics**, and **Unavailable/Decoupled Measurements** to comply strictly with product authenticity principles.
+- **100% Relative Path Portability:** Zero hardcoded machine paths; clone and execute on any standard Windows laptop.
 
 ---
 
-## 2. Quickstart & Installation Instructions
+## 2. Installation & Portability Requirements
 
-The application is engineered for zero-dependency bloat and executes smoothly on standard Python environments without requiring external physical cameras.
+The application runs locally without requiring external physical cameras, GPU drivers, or cloud APIs.
 
-### Prerequisites
-- Python 3.10 or 3.11
-- Standard libraries: `streamlit`, `opencv-python-headless`, `plotly`, `pandas`, `numpy`, `pillow`
+### Environment Requirements
+- **Operating System:** Windows 10/11 (or Linux/WSL2/macOS)
+- **Python Version:** Python 3.10 or Python 3.11 (Recommended)
 
-### Launch Command
-Execute the following from the repository root:
+### Package Installation
+```powershell
+# Using Python 3.11 launcher (Windows)
+py -3.11 -m pip install streamlit opencv-python-headless plotly pandas numpy pillow
+```
+*(Or standard pip)*:
+```bash
+pip install streamlit opencv-python-headless plotly pandas numpy pillow
+```
+
+### Application Launch Command
+From the root repository directory (`CraftifAIHackathon_CRA003`):
 
 ```powershell
-# Using default Python or Python 3.11
 py -3.11 -m streamlit run app/dashboard.py
 ```
-*(Or if `streamlit` is directly in your PATH)*:
+*(Or if streamlit is on PATH)*:
 ```powershell
 streamlit run app/dashboard.py
 ```
 
-The Command Center will launch immediately at `http://localhost:8501`.
+The Command Center will open in your default browser at:
+👉 **`http://localhost:8501`**
 
 ---
 
-## 3. Module-by-Module Walkthrough
+## 3. Scripted 3-Minute Demonstration Walkthrough
 
-### Module 1: Master Command Center & Live Feed
-- **Header Telemetry:** Shows live system status (`PERCEPTION ENGINE READY`), hardware engine details, and the active video stream profile (`sample_office.mp4`, 1728&times;1080 @ 30.00 FPS).
-- **Industrial KPI Cards:**
-  - **Total Incidents:** 6 verified safety events
-  - **Critical Violations:** 6 high-severity exclusion breaches
-  - **Tracked Entities:** 2 distinct personnel (`Track 0` and `Track 1`)
-  - **Zone Breaches:** 2 initial entries
-  - **Occupancy Dwell:** Estimated hazard exposure duration in seconds
-- **Real-Time Incursion Feed:** Displays a live alert strip with severity badges (`CRITICAL`, `WARNING`), event types (`ZONE_INTRUSION_ENTRY`, `ZONE_INTRUSION_OCCUPANCY`), and normalized ground contact coordinates.
+When presenting Sentinel Vision AI 2.0 to judges, follow this concise 3-minute sequence:
 
----
+### Minute 1: Command Center Overview & KPI Telemetry
+1. **Show the Header:** Point out the dark industrial safety theme (`#0b0f19`) and system status indicators: `PERCEPTION ENGINE READY` and `RECORDED PERCEPTION REPLAY`.
+2. **Review KPI Metric Cards:**
+   - **Total Incidents:** 6 verified safety events.
+   - **Critical Violations:** 6 high-severity exclusion breaches.
+   - **Tracked Entities:** 2 distinct workers (NvDCF Track IDs 0 and 1).
+   - **Zone Breaches:** 2 initial entries.
+   - **Occupancy Dwell:** Estimated hazard exposure duration (~8.5s cumulative).
+3. **Open the Provenance Disclosure:** Highlight that all numbers originate strictly from genuine DeepStream metadata (`metadata.json`), with clear distinctions between direct measurements and derived hysteresis metrics.
 
-### Module 2: Video Replay & Synchronized Scrub Telemetry
-Accessible via the **"📹 Video Replay & Monitoring"** tab:
-- **Frame-Accurate Scrubber:** Scrub across all 163 frames ($0.00\text{s}$ to $5.43\text{s}$) with instantaneous visual updates.
-- **Ground-Contact Crosshairs:** Displays bottom-center foot coordinates $(x_{\text{center}}, y_{\text{max}})$ with precision target crosshairs to distinguish true floor contact from upper-body leaning.
-- **Zone Polygon Overlay:** Hazard zones are rendered with semi-transparent alpha fills and distinct hazard borders.
-- **Quick Breach Navigation:** One-click shortcut buttons (`F3 (Entry)`, `F64`, `F125`) jump directly to recorded security breaches.
-- **Full Video Playback:** An integrated HTML5 video player option allows playing the verified demonstration MP4 stream (`sentinel_demo_repaired.mp4`).
+### Minute 2: Synchronized Video Scrubbing & Ground-Contact Verification
+1. **Navigate to Tab 1 ("📹 Video Replay & Monitoring"):**
+   - Note the dual-tab interface featuring **Frame-Accurate Scrub Telemetry** and **Full Video Playback**.
+2. **Scrub to Frame 0:**
+   - Observe that detected personnel are rendered with **CYAN / GREEN** bounding boxes labeled `Person #0 [SAFE]` and `Person #1 [SAFE]`.
+3. **Click Quick Jump Button `F3 (Entry)`:**
+   - The scrubber immediately jumps to Frame 3 ($t=0.18\text{s}$).
+   - Notice the bounding boxes and ground-contact crosshairs immediately flip to **BRIGHT RED** labeled `Person #0 [INTRUSION]` and `Person #1 [INTRUSION]`.
+   - Point out the bottom-center footprint datum $(x_{\text{center}}, y_{\text{max}})$: explain how using the ground-contact point prevents false alarms when workers lean forward.
+4. **Click `F64` and `F125`:**
+   - Show periodic `ZONE_INTRUSION_OCCUPANCY` alerts throttled by the 2.0-second cooldown timer, demonstrating the elimination of alarm fatigue.
 
----
-
-### Module 3: Incident Timeline & Chronology
-Accessible via the **"⏱️ Incident Timeline"** tab:
-- Lists all incidents chronologically with exact video timestamps ($t=0.18\text{s}, t=2.21\text{s}, t=4.24\text{s}$) and frame indexes.
-- Color-coded badges indicate severity and event transition states (`ENTRY` &rarr; `OCCUPANCY`).
-- Expandable incident cards provide confidence scores, zone IDs, footprint coordinates, and raw JSON payloads.
-- **"Jump to F#"** buttons sync the main video scrubber directly to that incident's frame index.
-
----
-
-### Module 4: Interactive Zone Calibration & Polygon Editor
-Accessible via the **"📐 Zone Calibration Editor"** tab:
-- **Reference Frame Alignment:** Loads genuine surveillance footage (Frame 0) as an active calibration canvas.
-- **Zone Selection & Custom Creation:** Edit existing zones (`Heavy Equipment Perimeter A`, `Walkway Buffer B`) or initialize new custom safety zones.
-- **Vertex Coordinate Editor:** Enter or adjust normalized $[0.0, 1.0]$ coordinates. Includes automatic geometric validation (checks for minimum 3 vertices and $[0.0, 1.0]$ boundaries).
-- **Live Visual Preview:** Renders numbered vertices, boundary lines, and alpha tints in real time over the video frame.
-- **Safe Persistence:**
-  - Automated backup creation (`configs/restricted_zone.json.bak`) prior to any write.
-  - One-click **Revert from Backup** button.
-  - Direct **Download JSON** button for exporting configuration files.
+### Minute 3: Zone Calibration, Forensics & Safety Copilot
+1. **Navigate to Tab 4 ("📐 Zone Calibration Editor"):**
+   - Demonstrate the interactive reference frame canvas.
+   - Show how vertices are validated in normalized $[0.0, 1.0]$ space.
+   - Click **"Stage to Working Copy"** to show safe staging (`restricted_zone_working.json`) without mutating production files.
+   - Explain the backend reprocessing command (`python scripts/pipegen_to_sentinel.py --zones configs/restricted_zone.json`).
+2. **Navigate to Tab 5 ("🔍 Incident Forensics Explorer"):**
+   - Filter by Track ID 0 or 1; demonstrate instant CSV/JSON exports.
+   - Select an incident to inspect the zoomed visual evidence snapshot.
+3. **Navigate to Tab 6 ("🤖 Safety Copilot"):**
+   - Click the prompt pill: *"🚨 Show critical violations"* or *"⏱️ Longest zone occupancy"*.
+   - Watch the loading state resolve into an authoritative, evidence-grounded response citing specific incident IDs and frame timestamps.
+   - Point out the active mode tag (`DETERMINISTIC_FALLBACK` or `REAL_BACKEND_AI`).
 
 ---
 
-### Module 5: Incident Explorer & Forensic Drilldown
-Accessible via the **"🔍 Incident Forensics Explorer"** tab:
-- **Multi-Dimensional Filters:** Filter simultaneously by Track ID, Zone Name, Event Type, and Severity.
-- **Confidence Slider & Chronological Sorting:** Filter low-confidence detections or invert sort order (Oldest vs. Newest).
-- **Forensic Evidence Snapshot:** Select any incident to see its metadata accompanied by an extracted visual frame highlighting the intruding personnel and ground-contact datum.
-- **Export Capabilities:** Download individual incident records as JSON files for audit compliance.
+## 4. Backend Integration Contract Specification
 
----
-
-### Module 6: Safety Copilot (Conversational EHS Assistant)
-Accessible via the **"🤖 Safety Copilot"** tab:
-- **Suggested Question Pills:** One-click shortcuts for standard audit queries:
-  - *"📋 Summarize all incidents"*
-  - *"🚨 Show critical violations"*
-  - *"⏱️ Longest zone occupancy"*
-  - *"⚠️ Highest-risk incident"*
-  - *"📍 Summarize Zone 1 events"*
-- **Backend Integration Ready:**
-  - Automatically queries `src/safety_copilot.py` (`answer_question`) if implemented by Developer 1.
-  - If backend is offline, gracefully shifts to deterministic local reasoning over authentic loaded incidents with clear visual status indicators.
-- **Referenced Evidence:** Every response cites specific incident IDs and frame numbers for auditable verification.
-
----
-
-## 4. Backend Integration Contract
-
-The dashboard expects backend functions conforming to:
+The dashboard communicates through `BackendAdapter` (`app/components/backend_adapter.py`), which exposes standard function contracts for Developer 1's backend modules:
 
 ```python
-# Optional contracts provided by Developer 1 in src/safety_copilot.py
-def answer_question(question: str) -> str:
-    """Answers safety questions over incident records."""
-    pass
+from app.components.backend_adapter import backend_adapter
 
-def get_incident_statistics() -> dict:
-    """Returns aggregated incident metrics."""
-    pass
+# 1. Load incidents from JSONL or backend persistence
+incidents = backend_adapter.load_incidents(path=None)
+
+# 2. Retrieve categorized statistics
+stats = backend_adapter.get_incident_statistics(incidents)
+
+# 3. Inspect individual incident
+record = backend_adapter.get_incident_details(event_id="0bf89c6b-...")
+
+# 4. Query Safety Copilot
+response = backend_adapter.answer_question("Summarize all safety incidents", incidents)
+# Returns: {"mode": "REAL_BACKEND_AI" | "DETERMINISTIC_FALLBACK", "text": "...", "evidence": [...]}
+
+# 5. Generate official EHS audit report
+report = backend_adapter.generate_incident_report(output_path="data/output/audit_report.json")
 ```
-
-The frontend components do **not** modify `src/` and remain 100% functional even when backend modules are offline or in-development.
 
 ---
 
-## 5. Verification & Testing Checklist
+## 5. Troubleshooting & Common Inquiries
 
-| Test Item | Verification Target | Status |
+| Issue Observed | Root Cause | Solution |
 | :--- | :--- | :--- |
-| **Dashboard Startup** | Launches without syntax or import errors | **VERIFIED** |
-| **Video Decoding** | OpenCV extracts all 163 frames at 30 FPS | **VERIFIED** |
-| **Authentic JSONL Ingestion** | Reads all 6 verified incidents without mock injection | **VERIFIED** |
-| **KPI Calculations** | Total, Critical, Tracks, and Dwell times match records | **VERIFIED** |
-| **Zone Editor Validation** | Prevents invalid geometries; creates `.bak` backups | **VERIFIED** |
-| **Multi-Filter Explorer** | Real-time filtering by track, severity, and event type | **VERIFIED** |
-| **Copilot Offline Grace** | Handles missing `src/safety_copilot.py` without crash | **VERIFIED** |
-| **Git Branch Rule** | All commits isolated strictly to `feat/safety-dashboard` | **VERIFIED** |
+| **`ModuleNotFoundError: cv2`** | OpenCV not installed in active environment | Run `pip install opencv-python-headless` |
+| **Video slider does not seek** | Video format decoding error | The app falls back automatically to raw `sample_office.mp4` or `sentinel_demo_repaired.mp4` |
+| **Zone Editor says "Invalid Geometry"** | Fewer than 3 points or values $> 1.0$ | Ensure at least 3 vertices with values between `0.0` and `1.0` |
+| **Port 8501 already in use** | An existing Streamlit instance is running | Run `streamlit run app/dashboard.py --server.port 8502` |

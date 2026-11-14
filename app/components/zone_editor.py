@@ -2,7 +2,7 @@
 """
 Sentinel Vision AI 2.0 — Interactive Zone Editor Component
 Provides real-time 2D polygon zone calibration, vertex manipulation,
-normalization validation, and safe persistence with automated backups.
+normalization validation, working-copy staging, and safe configuration persistence.
 """
 
 import json
@@ -14,6 +14,7 @@ import numpy as np
 import streamlit as st
 
 CONFIG_PATH = os.path.join("configs", "restricted_zone.json")
+WORKING_CONFIG_PATH = os.path.join("configs", "restricted_zone_working.json")
 BACKUP_PATH = os.path.join("configs", "restricted_zone.json.bak")
 RAW_VIDEO_PATH = "sample_office.mp4"
 REPAIRED_VIDEO_PATH = os.path.join("data", "output", "sentinel_demo_repaired.mp4")
@@ -22,9 +23,11 @@ REPAIRED_VIDEO_PATH = os.path.join("data", "output", "sentinel_demo_repaired.mp4
 def load_raw_calibration_frame() -> np.ndarray:
     """Extracts reference calibration frame (Frame 0) for zone overlays."""
     target_video = RAW_VIDEO_PATH if os.path.exists(RAW_VIDEO_PATH) else REPAIRED_VIDEO_PATH
+    if not os.path.exists(target_video):
+        return np.zeros((1080, 1728, 3), dtype=np.uint8)
+
     cap = cv2.VideoCapture(target_video)
     if not cap.isOpened():
-        # Fallback dark calibration canvas (1728 x 1080)
         return np.zeros((1080, 1728, 3), dtype=np.uint8)
     ret, frame = cap.read()
     cap.release()
@@ -34,11 +37,12 @@ def load_raw_calibration_frame() -> np.ndarray:
 
 
 def load_zones_data() -> Dict[str, Any]:
-    """Loads zone configuration payload."""
-    if not os.path.exists(CONFIG_PATH):
+    """Loads zone configuration payload from working copy if available, else master config."""
+    path_to_read = WORKING_CONFIG_PATH if os.path.exists(WORKING_CONFIG_PATH) else CONFIG_PATH
+    if not os.path.exists(path_to_read):
         return {"version": "1.0", "coordinate_system": "normalized", "zones": []}
     try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        with open(path_to_read, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return {"version": "1.0", "coordinate_system": "normalized", "zones": []}
@@ -54,7 +58,7 @@ def validate_polygon(vertices: List[List[float]]) -> Tuple[bool, str]:
             return False, f"Vertex #{i+1} must be an [x, y] coordinate pair."
         x, y = pt[0], pt[1]
         if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
-            return False, f"Vertex #{i+1} ({x}, {y}) is outside normalized [0.0, 1.0] space."
+            return False, f"Vertex #{i+1} ({x:.4f}, {y:.4f}) is outside normalized [0.0, 1.0] range."
 
     return True, "Polygon coordinates verified valid and normalized."
 
@@ -111,12 +115,12 @@ def render_zone_preview(
 
 
 def render_zone_editor_module() -> None:
-    """Renders the comprehensive interactive zone calibration workspace."""
+    """Renders the comprehensive interactive zone calibration workspace with safety guards."""
     st.subheader("📐 Restricted Zone Spatial Calibration & Polygon Editor")
 
     st.markdown(
         """
-        <div style="font-size: 11px; color: #94a3b8; margin-bottom: 14px;">
+        <div style="font-size: 11px; color: #94a3b8; margin-bottom: 12px;">
           Calibrate 2D polygonal Exclusion & Warning Envelopes directly over genuine reference footage.
           Coordinates are normalized strictly to <code>[0.0, 1.0]</code> relative to stream dimensions (1728&times;1080).
         </div>
@@ -124,11 +128,20 @@ def render_zone_editor_module() -> None:
         unsafe_allow_html=True,
     )
 
+    # Working copy status
+    has_working_copy = os.path.exists(WORKING_CONFIG_PATH)
+    if has_working_copy:
+        st.markdown(
+            """
+            <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 6px; padding: 6px 12px; margin-bottom: 12px; font-size: 11px; color: #fbbf24; font-family: 'JetBrains Mono', monospace;">
+              ⚠️ STAGED WORKING COPY ACTIVE (configs/restricted_zone_working.json). Production config unmodified.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
     config_data = load_zones_data()
     zones_list = config_data.get("zones", [])
-
-    if not zones_list:
-        st.warning("No zones currently loaded in configuration.")
 
     zone_names = [f"{z.get('zone_name')} ({z.get('zone_id')})" for z in zones_list]
     zone_names.append("+ Create New Zone")
@@ -233,55 +246,94 @@ def render_zone_editor_module() -> None:
         preview_img = render_zone_preview(base_img, preview_zones, active_zone_id=z_id)
         st.image(
             preview_img,
-            caption=f"Calibration View — Active Target: {z_name} ({len(parsed_vertices)} Vertices)",
+            caption=f"Calibration View — Target: {z_name} ({len(parsed_vertices)} Vertices)",
             use_container_width=True,
         )
 
     st.markdown("---")
-    st.markdown("#### 4. Safe Configuration Persistence")
+    st.markdown("#### 4. Safe Staging & Persistence Operations")
 
-    col_save, col_revert, col_export = st.columns(3)
+    col_stage, col_commit, col_cancel = st.columns(3)
 
-    with col_save:
-        confirm_save = st.checkbox("Confirm modification of active configuration")
-        if st.button("💾 Save Zone Configuration", type="primary", disabled=not confirm_save):
+    with col_stage:
+        st.markdown("**Step A: Save to Working Copy**")
+        if st.button("📝 Stage to Working Copy", type="secondary"):
             if not valid_geom:
-                st.error("Cannot save invalid polygon geometry. Check vertices.")
+                st.error("Cannot stage invalid polygon geometry.")
             elif not z_id or not z_name:
-                st.error("Zone Identifier and Name must not be empty.")
+                st.error("Zone ID and Name must not be empty.")
             else:
-                # 1. Create automatic backup of current configuration
-                if os.path.exists(CONFIG_PATH):
-                    shutil.copy2(CONFIG_PATH, BACKUP_PATH)
-
-                # 2. Update zones list
                 if not is_new_zone:
                     zones_list[current_zone_idx] = temp_zone
                 else:
                     zones_list.append(temp_zone)
-
                 config_data["zones"] = zones_list
 
-                # 3. Write back atomically
+                # Save to working copy only
+                with open(WORKING_CONFIG_PATH, "w", encoding="utf-8") as f:
+                    json.dump(config_data, f, indent=2)
+                st.success(f"Staged `{z_name}` to `{WORKING_CONFIG_PATH}`. Production config preserved.")
+                st.rerun()
+
+    with col_commit:
+        st.markdown("**Step B: Commit to Production Config**")
+        confirm_replace = st.checkbox("Confirm overwriting `configs/restricted_zone.json`")
+        if st.button("🚀 Commit to Master Config", type="primary", disabled=not confirm_replace):
+            if not valid_geom:
+                st.error("Cannot commit invalid geometry.")
+            else:
+                # 1. Automated Backup
+                if os.path.exists(CONFIG_PATH):
+                    shutil.copy2(CONFIG_PATH, BACKUP_PATH)
+
+                # 2. Update and write
+                if not is_new_zone:
+                    zones_list[current_zone_idx] = temp_zone
+                else:
+                    zones_list.append(temp_zone)
+                config_data["zones"] = zones_list
+
                 with open(CONFIG_PATH, "w", encoding="utf-8") as f:
                     json.dump(config_data, f, indent=2)
 
-                st.success(f"Successfully saved zone definition `{z_name}`! Backup created at `{BACKUP_PATH}`.")
+                # Remove working copy once committed
+                if os.path.exists(WORKING_CONFIG_PATH):
+                    os.remove(WORKING_CONFIG_PATH)
+
+                st.success(f"Committed changes to production config! Backup created at `{BACKUP_PATH}`.")
                 st.rerun()
 
-    with col_revert:
-        if st.button("↺ Revert from Backup"):
-            if os.path.exists(BACKUP_PATH):
-                shutil.copy2(BACKUP_PATH, CONFIG_PATH)
-                st.info("Reverted configuration from `.bak` backup.")
+    with col_cancel:
+        st.markdown("**Step C: Discard & Revert**")
+        if st.button("❌ Discard Staged Changes"):
+            if os.path.exists(WORKING_CONFIG_PATH):
+                os.remove(WORKING_CONFIG_PATH)
+                st.info("Discarded staged working copy.")
                 st.rerun()
             else:
-                st.warning("No backup file (`restricted_zone.json.bak`) found.")
+                st.info("No active working copy to discard.")
 
-    with col_export:
-        st.download_button(
-            label="📥 Download JSON Configuration",
-            data=json.dumps(config_data, indent=2),
-            file_name="restricted_zone.json",
-            mime="application/json",
+        if st.button("↺ Restore Master from Backup"):
+            if os.path.exists(BACKUP_PATH):
+                shutil.copy2(BACKUP_PATH, CONFIG_PATH)
+                st.success("Restored master configuration from `.bak` backup.")
+                st.rerun()
+            else:
+                st.warning("No `.bak` backup file found.")
+
+    # Backend Reprocessing Pipeline Explanation
+    st.markdown("---")
+    with st.expander("🔄 How Zone Modifications are Reprocessed by the Backend", expanded=False):
+        st.markdown(
+            """
+            > **Integration Notice:** Editing or saving polygon definitions updates configuration files (`configs/restricted_zone.json`).
+            > To re-evaluate the raw DeepStream perception metadata against the newly saved boundaries:
+            >
+            > ```powershell
+            > # Execute the spatial reasoning bridge with updated zones:
+            > python scripts/pipegen_to_sentinel.py --zones configs/restricted_zone.json
+            > ```
+            >
+            > This re-runs the ray-casting state machine and outputs updated incident records to `data/output/incident_records.jsonl`.
+            """
         )

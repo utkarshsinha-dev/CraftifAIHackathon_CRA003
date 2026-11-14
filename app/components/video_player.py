@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 Sentinel Vision AI 2.0 — Video Player & Perception Replay Component
-Provides interactive playback, frame-accurate scrub inspection, zone overlay,
-and synchronized DeepStream detection telemetry.
+Provides interactive playback, cached frame-accurate scrub inspection,
+real-time spatial zone containment coloring, and synchronized DeepStream telemetry.
 """
 
 import json
@@ -51,15 +51,18 @@ def load_zones_config() -> List[Dict[str, Any]]:
 
 
 def get_available_video_path() -> Optional[str]:
-    """Finds best available video path with fallback."""
+    """Finds best available video path with graceful fallback."""
     for path in [REPAIRED_VIDEO_PATH, OVERLAY_VIDEO_PATH, RAW_VIDEO_PATH]:
         if os.path.exists(path):
             return path
     return None
 
 
-def get_video_frame(video_path: str, frame_idx: int) -> Optional[np.ndarray]:
-    """Extracts a specific frame index using OpenCV."""
+@st.cache_data(max_entries=170)
+def get_cached_video_frame(video_path: str, frame_idx: int) -> Optional[np.ndarray]:
+    """Caches decoded video frames in memory for zero-latency slider scrubbing."""
+    if not os.path.exists(video_path):
+        return None
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         return None
@@ -71,6 +74,24 @@ def get_video_frame(video_path: str, frame_idx: int) -> Optional[np.ndarray]:
     return None
 
 
+def is_point_in_polygon(x: float, y: float, polygon: List[List[float]]) -> bool:
+    """Ray-casting point-in-polygon containment test for normalized coordinates."""
+    n = len(polygon)
+    inside = False
+    p1x, p1y = polygon[0]
+    for i in range(1, n + 1):
+        p2x, p2y = polygon[i % n]
+        if y > min(p1y, p2y):
+            if y <= max(p1y, p2y):
+                if x <= max(p1x, p2x):
+                    if p1y != p2y:
+                        xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                    if p1x == p2x or x <= xinters:
+                        inside = not inside
+        p1x, p1y = p2x, p2y
+    return inside
+
+
 def render_annotated_frame(
     frame: np.ndarray,
     frame_idx: int,
@@ -78,8 +99,8 @@ def render_annotated_frame(
     zones: List[Dict[str, Any]],
 ) -> np.ndarray:
     """
-    Renders polygon zones, bounding boxes, and ground-contact points
-    onto the raw video frame.
+    Renders polygon zones, bounding boxes, and ground-contact points.
+    Dynamically highlights intruders in RED when their footprint breaches a zone.
     """
     h, w, _ = frame.shape
     annotated = frame.copy()
@@ -122,23 +143,67 @@ def render_annotated_frame(
         track_id = obj.get("id", -1)
         conf = obj.get("confidence", 0.0)
 
-        left = int(bbox.get("left", 0))
-        top = int(bbox.get("top", 0))
-        bw = int(bbox.get("width", 0))
-        bh = int(bbox.get("height", 0))
-        right = left + bw
-        bottom = top + bh
+        # Coordinate conversion: handle dict {left, top, width, height} or list [x1, y1, x2, y2]
+        if isinstance(bbox, dict):
+            raw_left = float(bbox.get("left", 0.0))
+            raw_top = float(bbox.get("top", 0.0))
+            raw_w = float(bbox.get("width", 0.0))
+            raw_h = float(bbox.get("height", 0.0))
+
+            # If normalized (<= 1.0), scale by dimensions
+            if raw_left <= 1.0 and raw_w <= 1.0 and raw_w > 0:
+                left = int(raw_left * w)
+                top = int(raw_top * h)
+                bw = int(raw_w * w)
+                bh = int(raw_h * h)
+            else:
+                left = int(raw_left)
+                top = int(raw_top)
+                bw = int(raw_w)
+                bh = int(raw_h)
+            right = left + bw
+            bottom = top + bh
+        elif isinstance(bbox, list) and len(bbox) == 4:
+            if bbox[0] <= 1.0 and bbox[2] <= 1.0:
+                left = int(bbox[0] * w)
+                top = int(bbox[1] * h)
+                right = int(bbox[2] * w)
+                bottom = int(bbox[3] * h)
+                bw = right - left
+                bh = bottom - top
+            else:
+                left, top, right, bottom = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
+                bw = right - left
+                bh = bottom - top
+        else:
+            continue
 
         # Footprint: bottom center (x_center, y_max)
         foot_x = int(left + (bw / 2))
         foot_y = bottom
+        norm_foot_x = foot_x / float(w)
+        norm_foot_y = foot_y / float(h)
 
-        # Box outline
-        box_color = (14, 165, 233)  # Cyan default
+        # Check containment against zones
+        breaching_zone = None
+        for z in zones:
+            poly = z.get("polygon", [])
+            if len(poly) >= 3 and is_point_in_polygon(norm_foot_x, norm_foot_y, poly):
+                breaching_zone = z
+                break
+
+        # Dynamic box color based on intrusion state
+        if breaching_zone:
+            box_color = (239, 68, 68)  # Red for Incursion
+            status_tag = f"Person #{track_id} [INTRUSION]"
+        else:
+            box_color = (16, 185, 129)  # Green for Safe
+            status_tag = f"Person #{track_id} [SAFE]"
+
         cv2.rectangle(annotated, (left, top), (right, bottom), box_color, 2)
 
         # Label tag
-        label = f"Person #{track_id} ({conf:.2f})"
+        label = f"{status_tag} ({conf:.2f})"
         (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         cv2.rectangle(annotated, (left, top - 20), (left + tw + 6, top), box_color, -1)
         cv2.putText(
@@ -147,15 +212,16 @@ def render_annotated_frame(
             (left + 3, top - 6),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
-            (15, 23, 42),
+            (255, 255, 255) if breaching_zone else (15, 23, 42),
             1,
             cv2.LINE_AA,
         )
 
-        # Ground contact crosshair
-        cv2.circle(annotated, (foot_x, foot_y), 5, (239, 68, 68), -1)
-        cv2.line(annotated, (foot_x - 10, foot_y), (foot_x + 10, foot_y), (255, 255, 255), 1)
-        cv2.line(annotated, (foot_x, foot_y - 10), (foot_x, foot_y + 10), (255, 255, 255), 1)
+        # Ground contact crosshairs
+        crosshair_color = (239, 68, 68) if breaching_zone else (56, 189, 248)
+        cv2.circle(annotated, (foot_x, foot_y), 5, crosshair_color, -1)
+        cv2.line(annotated, (foot_x - 12, foot_y), (foot_x + 12, foot_y), (255, 255, 255), 1)
+        cv2.line(annotated, (foot_x, foot_y - 12), (foot_x, foot_y + 12), (255, 255, 255), 1)
 
     return annotated
 
@@ -166,9 +232,9 @@ def render_video_player_module(incidents: List[Dict[str, Any]]) -> None:
 
     st.markdown(
         """
-        <div style="background: #111827; border: 1px solid #1e293b; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between;">
+        <div style="background: #111827; border: 1px solid #1e293b; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between; align-items: center;">
           <span><strong>FEED:</strong> sample_office.mp4 (1728&times;1080 @ 30.00 FPS)</span>
-          <span class="status-pill status-replay">Recorded Replay Mode</span>
+          <span class="status-pill status-replay">Recorded Perception Replay</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -182,8 +248,12 @@ def render_video_player_module(incidents: List[Dict[str, Any]]) -> None:
     tab1, tab2 = st.tabs(["⚡ Frame-Accurate Scrub Telemetry", "🎬 Full Video Playback"])
 
     with tab1:
-        # Frame scrubber controls
         total_frames = 163
+
+        # Synchronize session state key
+        if "scrubber_slider" not in st.session_state:
+            st.session_state["scrubber_slider"] = 3
+
         col_ctrl1, col_ctrl2 = st.columns([3, 1])
 
         with col_ctrl1:
@@ -191,7 +261,7 @@ def render_video_player_module(incidents: List[Dict[str, Any]]) -> None:
                 "Timeline Scrubber (Frame Index / Time)",
                 min_value=0,
                 max_value=total_frames - 1,
-                value=st.session_state.get("current_frame", 3),
+                value=st.session_state["scrubber_slider"],
                 step=1,
                 format="Frame %d",
                 key="scrubber_slider",
@@ -220,11 +290,10 @@ def render_video_player_module(incidents: List[Dict[str, Any]]) -> None:
         zones = load_zones_config()
         current_objects = meta_dict.get(frame_slider, [])
 
-        # Prefer extracting from raw video to allow dynamic overlay drawing
-        frame_img = get_video_frame(RAW_VIDEO_PATH if os.path.exists(RAW_VIDEO_PATH) else video_path, frame_slider)
+        target_source = RAW_VIDEO_PATH if os.path.exists(RAW_VIDEO_PATH) else video_path
+        frame_img = get_cached_video_frame(target_source, frame_slider)
 
         if frame_img is not None:
-            # Check if this frame has an incident
             frame_incidents = [inc for inc in incidents if inc.get("frame_index") == frame_slider]
             is_breach = len(frame_incidents) > 0
 
@@ -232,7 +301,7 @@ def render_video_player_module(incidents: List[Dict[str, Any]]) -> None:
             annotated_img = render_annotated_frame(frame_img, frame_slider, current_objects, zones)
             st.image(
                 annotated_img,
-                caption=f"Sentinel Vision AI Telemetry — Frame {frame_slider} (Objects: {len(current_objects)}, Breaches: {len(frame_incidents)})",
+                caption=f"Sentinel Vision AI Telemetry — Frame {frame_slider} (Objects: {len(current_objects)}, Active Breaches: {len(frame_incidents)})",
                 use_container_width=True,
             )
 
@@ -244,11 +313,11 @@ def render_video_player_module(incidents: List[Dict[str, Any]]) -> None:
                 status_txt = "CRITICAL BREACH" if is_breach else "NORMAL"
                 st.metric("Zone Status", status_txt)
             with t_col3:
-                st.metric("Frame Rate", "30.00 FPS")
+                st.metric("Source Framerate", "30.00 FPS")
             with t_col4:
-                st.metric("Inference Engine", "YOLO11s TensorRT")
+                st.metric("Inference Engine", "YOLO11s TensorRT FP32")
         else:
-            st.warning(f"Could not decode frame {frame_slider}.")
+            st.warning(f"Could not decode frame {frame_slider} from `{target_source}`.")
 
     with tab2:
         st.video(video_path)

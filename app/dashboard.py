@@ -141,7 +141,7 @@ def main():
 
     with tab_analytics:
         st.subheader("📊 Spatial Incursion & Exposure Analytics")
-        render_analytics_charts(incidents)
+        render_analytics_charts(incidents, kpis)
 
     with tab_zone:
         render_zone_editor_module()

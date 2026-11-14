@@ -88,4 +88,5 @@ def render_incident_timeline_module(incidents: List[Dict[str, Any]]) -> None:
         with col_action:
             if st.button("Jump to F#", key=f"jump_{idx}"):
                 st.session_state["scrubber_slider"] = frame_idx
+                st.toast(f"Synchronized to Frame #{frame_idx} (t={time_sec:.2f}s)")
                 st.rerun()
