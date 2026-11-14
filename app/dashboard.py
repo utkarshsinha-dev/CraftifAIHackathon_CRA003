@@ -23,6 +23,7 @@ from app.components.metrics import (
     render_analytics_charts,
 )
 from app.components.video_player import render_video_player_module
+from app.components.investigation_workspace import render_investigation_workspace_module
 from app.components.incident_timeline import render_incident_timeline_module
 from app.components.zone_editor import render_zone_editor_module
 from app.components.incident_explorer import render_incident_explorer_module
@@ -88,13 +89,14 @@ def main():
     # 3. Main Navigation Workspace Tabs
     tab_names = [
         "📹 Video Replay & Monitoring",
+        "🕵️ Incident Investigation",
         "⏱️ Incident Timeline",
         "📊 Safety Analytics",
         "📐 Zone Calibration Editor",
         "🔍 Incident Forensics Explorer",
         "🤖 Safety Copilot",
     ]
-    tab_main, tab_time, tab_analytics, tab_zone, tab_explorer, tab_copilot = st.tabs(tab_names)
+    tab_main, tab_inv, tab_time, tab_analytics, tab_zone, tab_explorer, tab_copilot = st.tabs(tab_names)
 
     with tab_main:
         col_video, col_alerts = st.columns([3, 2])
@@ -135,6 +137,9 @@ def main():
                     """,
                     unsafe_allow_html=True,
                 )
+
+    with tab_inv:
+        render_investigation_workspace_module(incidents)
 
     with tab_time:
         render_incident_timeline_module(incidents)

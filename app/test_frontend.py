@@ -146,6 +146,75 @@ def test_resilience_malformed_records():
     print("  [PASS] Resilient against missing fields and null track IDs.")
 
 
+def test_trajectory_extraction():
+    print("Testing 2D Trajectory extraction from metadata...")
+    traj0 = backend_adapter.get_trajectory(0)
+    assert traj0["total_points"] == 160
+    assert traj0["track_id"] == 0
+    assert traj0["movement_classification"] != "UNAVAILABLE"
+    assert "image-coordinate" in traj0["disclaimer"]
+
+    # Test non-existent track ID
+    traj_none = backend_adapter.get_trajectory(999)
+    assert traj_none["total_points"] == 0
+    assert traj_none["movement_classification"] == "NO_TRAJECTORY_DATA"
+    print("  [PASS] Trajectory kinematics extracted and verified across 160 frames.")
+
+
+def test_risk_assessment_evaluation():
+    print("Testing Risk Assessment breakdown...")
+    incidents = backend_adapter.load_incidents()
+    inc0 = incidents[0]
+    risk = backend_adapter.get_risk_assessment(inc0)
+    assert risk["risk_score"] == 85
+    assert risk["severity"] == "CRITICAL"
+    assert len(risk["factors"]) == 3
+    assert "DETERMINISTIC_SPATIAL_RULES" in risk["source"]
+    print("  [PASS] Risk assessment evaluated with multi-factor breakdown.")
+
+
+def test_contextual_copilot_investigation():
+    print("Testing contextual Copilot queries with incident context...")
+    incidents = backend_adapter.load_incidents()
+    inc0 = incidents[0]
+
+    # Context query 1: Why critical
+    ans1 = backend_adapter.answer_question("Why was this incident classified as critical?", incidents, incident_context=inc0)
+    assert "CRITICAL" in ans1["text"]
+    assert "zone_restricted_01" in ans1["text"]
+    assert inc0["incident_id"] in ans1["evidence"]
+
+    # Context query 2: Evidence
+    ans2 = backend_adapter.answer_question("What evidence supports this violation?", incidents, incident_context=inc0)
+    assert "sample_office.mp4" in ans2["text"]
+    assert "Footprint" in ans2["text"] or "Ground-Contact" in ans2["text"]
+
+    # Context query 3: CAPA
+    ans3 = backend_adapter.answer_question("What preventive measures could reduce similar incidents?", incidents, incident_context=inc0)
+    assert "Optical" in ans3["text"] or "CAPA" in ans3["text"]
+
+    print("  [PASS] Contextual forensic Copilot queries resolved with incident grounding.")
+
+
+def test_investigation_report_export():
+    print("Testing investigation report generation...")
+    incidents = backend_adapter.load_incidents()
+    inc0 = incidents[0]
+    report_md = backend_adapter.generate_investigation_report_markdown(
+        incident=inc0,
+        operator_notes="Test observation",
+        capa_actions="Test CAPA",
+        investigation_status="Under Review",
+        contributing_conditions=["Test Condition"],
+    )
+    assert "Sentinel Vision AI 2.0" in report_md
+    assert inc0["incident_id"] in report_md
+    assert "Test observation" in report_md
+    assert "Test CAPA" in report_md
+    assert "Regulatory Disclaimer" in report_md
+    print("  [PASS] Investigation Markdown package compiled successfully.")
+
+
 if __name__ == "__main__":
     print("==================================================================")
     print("SENTINEL VISION AI 2.0 — FRONTEND HARDENING VERIFICATION")
@@ -157,6 +226,10 @@ if __name__ == "__main__":
     test_point_in_polygon_containment()
     test_annotated_frame_rendering()
     test_resilience_malformed_records()
+    test_trajectory_extraction()
+    test_risk_assessment_evaluation()
+    test_contextual_copilot_investigation()
+    test_investigation_report_export()
     print("==================================================================")
-    print("ALL 7 FRONTEND HARDENING & INTEGRATION TESTS PASSED (100% SUCCESS)")
+    print("ALL 11 FRONTEND HARDENING & WORKSPACE TESTS PASSED (100% SUCCESS)")
     print("==================================================================")
