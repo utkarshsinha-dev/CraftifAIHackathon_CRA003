@@ -502,11 +502,13 @@ class BackendAdapter:
             z_name = incident_context.get("zone_name", "Heavy Equipment Perimeter A") if incident_context else "Heavy Equipment Perimeter A"
             inc_id = incident_context.get("incident_id") if incident_context else None
             text = (
-                f"### Recommended Corrective & Preventive Actions (CAPA)\n\n"
-                f"To prevent unauthorized worker intrusions into `{z_name}`:\n"
-                f"1. **Optical Safety Light Curtains:** Install Type 4 optoelectronic tripwires around Perimeter A tied to automated machine interlocks.\n"
-                f"2. **Automated E-Stop PLC Relay:** Couple DeepStream JSON incident alerts directly to equipment braking circuits.\n"
-                f"3. **High-Visibility Floor Demarcation:** Repaint perimeter boundary with OSHA-compliant yellow/black reflective diagonal striping.\n"
+                f"### EHS Advisory: Recommended Corrective & Preventive Actions (CAPA)\n\n"
+                f"*Note: These recommendations represent industrial advisory measures based on spatial breach telemetry, "
+                f"not physical interventions executed on-site.*\n\n"
+                f"To mitigate recurring unauthorized incursions into `{z_name}`:\n"
+                f"1. **Type 4 Optoelectronic Tripwires:** Install optical safety light curtains around Perimeter A wired to motor brake interlocks.\n"
+                f"2. **PLC Emergency-Stop Coupling:** Couple DeepStream JSON incident alerts directly to equipment braking relay circuits.\n"
+                f"3. **High-Visibility Floor Demarcation:** Repaint exclusion boundaries with OSHA-compliant yellow/black reflective diagonal striping.\n"
                 f"4. **Directional Audio-Visual Strobes:** Trigger localized strobe beacons upon initial `ZONE_INTRUSION_ENTRY` detection."
             )
             ev = [f"[Frame 3, t=0.18s | Track 0 | {z_name} | Initial Incursion Entry]"]
@@ -515,8 +517,8 @@ class BackendAdapter:
             return {
                 "text": text,
                 "answer": text,
-                "mode": "BACKEND SAFETY COPILOT CONNECTED" if self._backend_service else "DETERMINISTIC FALLBACK MODE",
-                "status_label": "BACKEND SAFETY COPILOT CONNECTED" if self._backend_service else "DETERMINISTIC FALLBACK MODE",
+                "mode": "FRONTEND EHS ADVISORY (DETERMINISTIC RECOMMENDATIONS)",
+                "status_label": "FRONTEND EHS ADVISORY",
                 "intent": "capa_recommendations",
                 "evidence": ev,
                 "confidence": 1.0,
