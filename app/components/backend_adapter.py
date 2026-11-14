@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Sentinel Vision AI 2.0 — Backend Integration Adapter
+Sentinel Vision AI 2.0 — Backend Integration Adapter (Hardened v2.1)
 Centralized abstraction layer for Developer 1's backend services.
-Provides seamless fallback, error handling, and runtime capability detection.
+Provides seamless fallback, error handling, signature flexibility,
+and strict data provenance auditing.
 """
 
 import importlib
 import json
 import os
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Union
 
 DEFAULT_INCIDENT_PATH = os.path.join("data", "output", "incident_records.jsonl")
 DEFAULT_METADATA_PATH = os.path.join("artifacts", "pipegen-export", "output", "metadata.json")
@@ -17,14 +18,15 @@ DEFAULT_ZONES_PATH = os.path.join("configs", "restricted_zone.json")
 
 class BackendAdapter:
     """
-    Modular integration adapter that attempts to consume Developer 1's backend
+    Modular integration adapter that interfaces with Developer 1's backend
     modules (src/safety_copilot.py, src/zone_monitor.py, etc.) when available,
-    while guaranteeing 100% uptime through robust local fallback logic.
+    while guaranteeing 100% operational uptime through robust local fallback logic.
     """
 
     def __init__(self):
         self._backend_copilot = None
         self._copilot_status = "UNAVAILABLE"
+        self._active_dataset_path = DEFAULT_INCIDENT_PATH
         self._detect_backend()
 
     def _detect_backend(self):
@@ -49,24 +51,32 @@ class BackendAdapter:
             "has_get_statistics": hasattr(self._backend_copilot, "get_incident_statistics") if self._backend_copilot else False,
             "has_get_details": hasattr(self._backend_copilot, "get_incident_details") if self._backend_copilot else False,
             "has_generate_report": hasattr(self._backend_copilot, "generate_incident_report") if self._backend_copilot else False,
+            "has_get_risk_assessment": hasattr(self._backend_copilot, "get_risk_assessment") if self._backend_copilot else False,
+            "active_dataset": self._active_dataset_path,
         }
 
-    def load_incidents(self, path: Optional[str] = None) -> List[Dict[str, Any]]:
+    def load_incidents(self, log_path: Optional[str] = None, path: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Loads incident records. Prioritizes Developer 1's backend load_incidents()
-        if implemented; otherwise executes hardened JSONL ingestion.
+        Loads incident records. Supports both Developer 1's signature load_incidents(log_path=None)
+        and legacy path=None. Prioritizes backend loader if available.
         """
-        # 1. Attempt backend loader
+        target_path = log_path or path or DEFAULT_INCIDENT_PATH
+        self._active_dataset_path = target_path
+
+        # 1. Attempt Developer 1 backend loader
         if self._backend_copilot and hasattr(self._backend_copilot, "load_incidents"):
             try:
-                res = self._backend_copilot.load_incidents(path)
+                # Try with log_path keyword argument first
+                try:
+                    res = self._backend_copilot.load_incidents(log_path=target_path)
+                except TypeError:
+                    res = self._backend_copilot.load_incidents(target_path)
                 if isinstance(res, list):
                     return res
             except Exception:
                 pass  # Graceful fallback to local loader
 
         # 2. Hardened local loader
-        target_path = path or DEFAULT_INCIDENT_PATH
         if not os.path.exists(target_path):
             return []
 
@@ -111,21 +121,42 @@ class BackendAdapter:
         incidents.sort(key=lambda x: x.get("frame_index", 0))
         return incidents
 
-    def get_incident_statistics(self, incidents: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    def get_incident_statistics(
+        self,
+        first_arg: Optional[Union[str, List[Dict[str, Any]]]] = None,
+        log_path: Optional[str] = None,
+        incidents: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
         """
-        Returns statistical KPI indicators.
-        Strictly categorizes metrics into Available, Derived, and Unavailable.
+        Returns statistical KPI indicators. Supports both:
+        - get_incident_statistics(incidents) [Legacy / Direct list]
+        - get_incident_statistics(log_path=...) [Developer 1 Backend signature]
+        Strictly categorizes metrics into Available, Derived, and Unavailable measurements.
         """
+        actual_incidents = incidents
+        actual_log_path = log_path
+
+        if isinstance(first_arg, list):
+            actual_incidents = first_arg
+        elif isinstance(first_arg, str):
+            actual_log_path = first_arg
+
+        target_path = actual_log_path or self._active_dataset_path
+
+        # 1. Attempt backend stats function
         if self._backend_copilot and hasattr(self._backend_copilot, "get_incident_statistics"):
             try:
-                res = self._backend_copilot.get_incident_statistics()
+                try:
+                    res = self._backend_copilot.get_incident_statistics(log_path=target_path)
+                except TypeError:
+                    res = self._backend_copilot.get_incident_statistics()
                 if isinstance(res, dict):
                     return res
             except Exception:
                 pass
 
-        # Local computation over loaded records
-        records = incidents if incidents is not None else self.load_incidents()
+        # 2. Local computation over loaded records
+        records = actual_incidents if actual_incidents is not None else self.load_incidents(log_path=target_path)
         if not records:
             return {
                 "available": {
@@ -136,6 +167,7 @@ class BackendAdapter:
                     "total_entries": 0,
                     "total_occupancies": 0,
                     "unique_zones": 0,
+                    "dataset_source": target_path,
                 },
                 "derived": {
                     "estimated_occupancy_seconds": 0.0,
@@ -149,20 +181,20 @@ class BackendAdapter:
             }
 
         total = len(records)
-        critical = sum(1 for inc in records if inc.get("severity") == "CRITICAL")
-        warning = sum(1 for inc in records if inc.get("severity") == "WARNING")
+        critical = sum(1 for inc in records if str(inc.get("severity", "")).upper() == "CRITICAL")
+        warning = sum(1 for inc in records if str(inc.get("severity", "")).upper() in ["WARNING", "MEDIUM", "HIGH"])
 
         # Handle missing or null track IDs
         valid_tracks = set(inc.get("track_id") for inc in records if inc.get("track_id") is not None)
         active_tracks = len(valid_tracks)
 
         unique_zones = len(set(inc.get("zone_id") for inc in records if inc.get("zone_id")))
-        entries = sum(1 for inc in records if inc.get("event_type") == "ZONE_INTRUSION_ENTRY")
-        occupancies = sum(1 for inc in records if inc.get("event_type") == "ZONE_INTRUSION_OCCUPANCY")
+        entries = sum(1 for inc in records if "ENTRY" in str(inc.get("event_type", "")))
+        occupancies = sum(1 for inc in records if "OCCUPANCY" in str(inc.get("event_type", "")))
 
         # Derived: 2.0s cooldown dwell estimation
         cooldown_cycles = occupancies * 2.0 + (entries * 0.5)
-        confidences = [inc.get("confidence", 0.0) for inc in records if inc.get("confidence") is not None]
+        confidences = [float(inc.get("confidence", 0.0)) for inc in records if inc.get("confidence") is not None]
         avg_conf = (sum(confidences) / len(confidences)) if confidences else 0.0
 
         return {
@@ -175,6 +207,7 @@ class BackendAdapter:
                 "total_occupancies": occupancies,
                 "unique_zones": unique_zones,
                 "track_ids": sorted(list(valid_tracks)),
+                "dataset_source": target_path,
             },
             "derived": {
                 "estimated_occupancy_seconds": round(cooldown_cycles, 2),
@@ -187,32 +220,55 @@ class BackendAdapter:
             ],
         }
 
-    def get_incident_details(self, event_id: str, incidents: Optional[List[Dict[str, Any]]] = None) -> Optional[Dict[str, Any]]:
-        """Retrieves individual incident record details by UUID or synthetic ID."""
+    def get_incident_details(
+        self,
+        incident_id: Optional[str] = None,
+        event_id: Optional[str] = None,
+        log_path: Optional[str] = None,
+        incidents: Optional[List[Dict[str, Any]]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Retrieves individual incident record details by UUID or synthetic ID.
+        Supports Developer 1's get_incident_details(incident_id, log_path=None).
+        """
+        target_id = incident_id or event_id
+        if not target_id:
+            return None
+
+        target_path = log_path or self._active_dataset_path
+
+        # 1. Attempt backend function
         if self._backend_copilot and hasattr(self._backend_copilot, "get_incident_details"):
             try:
-                res = self._backend_copilot.get_incident_details(event_id)
+                try:
+                    res = self._backend_copilot.get_incident_details(incident_id=target_id, log_path=target_path)
+                except TypeError:
+                    res = self._backend_copilot.get_incident_details(target_id)
                 if isinstance(res, dict):
                     return res
             except Exception:
                 pass
 
-        records = incidents if incidents is not None else self.load_incidents()
+        # 2. Local lookup
+        records = incidents if incidents is not None else self.load_incidents(log_path=target_path)
         for inc in records:
-            if inc.get("incident_id") == event_id:
+            if inc.get("incident_id") == target_id:
                 return inc
         return None
 
     def get_trajectory(self, track_id: int) -> Dict[str, Any]:
         """
         Extracts genuine 2D trajectory path for a tracked entity across all frames
-        from authentic metadata.json. Never fabricates trajectory points.
+        from authentic metadata.json. Never fabricates or interpolates points.
+        Identifies missing observations explicitly.
         """
         if not os.path.exists(DEFAULT_METADATA_PATH):
             return {
                 "track_id": track_id,
                 "points": [],
                 "total_points": 0,
+                "observed_points_count": 0,
+                "interpolated_points_count": 0,
                 "movement_classification": "UNAVAILABLE",
                 "disclaimer": "Metadata file not found.",
             }
@@ -258,18 +314,30 @@ class BackendAdapter:
                 "track_id": track_id,
                 "points": [],
                 "total_points": 0,
+                "observed_points_count": 0,
+                "interpolated_points_count": 0,
                 "movement_classification": "NO_TRAJECTORY_DATA",
                 "disclaimer": f"No detection points recorded for Track ID {track_id}.",
             }
 
-        # Calculate image-space kinematics
+        # Sort points by frame index to guarantee chronological progression
+        points.sort(key=lambda p: p["frame"])
+
+        # Identify missing observation frames
+        observed_frames = set(pt["frame"] for pt in points)
+        min_frame = points[0]["frame"]
+        max_frame = points[-1]["frame"]
+        expected_seq = set(range(min_frame, max_frame + 1))
+        missing_seq = sorted(list(expected_seq - observed_frames))
+        prior_missing = [f for f in range(min_frame) if f not in observed_frames]
+
         start_pt = points[0]
         end_pt = points[-1]
         dx = end_pt["x"] - start_pt["x"]
         dy = end_pt["y"] - start_pt["y"]
         net_disp = (dx**2 + dy**2)**0.5
 
-        # Path length (cumulative distance)
+        # Path length (cumulative Euclidean distance in normalized image space)
         path_len = 0.0
         for i in range(1, len(points)):
             p1, p2 = points[i - 1], points[i]
@@ -290,6 +358,8 @@ class BackendAdapter:
             "track_id": track_id,
             "points": points,
             "total_points": len(points),
+            "observed_points_count": len(points),
+            "interpolated_points_count": 0,
             "start_frame": start_pt["frame"],
             "end_frame": end_pt["frame"],
             "start_time": start_pt["time_sec"],
@@ -300,93 +370,158 @@ class BackendAdapter:
             "path_length_norm": round(path_len, 4),
             "mean_velocity_norm_per_sec": round(mean_velocity_norm, 4),
             "movement_classification": classification,
-            "disclaimer": "Kinematics measured in 2D image-coordinate space. Not calibrated physical speed.",
+            "missing_frames_prior_to_lock": prior_missing,
+            "missing_frames_in_sequence": missing_seq,
+            "disclaimer": "Kinematics measured strictly in normalized 2D image-coordinate space [0.0, 1.0]. Physical metric speed (m/s) requires camera focal calibration and floor homography.",
         }
 
     def get_risk_assessment(self, incident: Dict[str, Any]) -> Dict[str, Any]:
         """
         Retrieves risk assessment for a specific incident.
-        Uses Developer 1 backend if available, otherwise deterministic spatial risk rules.
+        Prioritizes authoritative backend risk assessment if supplied in incident or via backend function;
+        otherwise provides transparent provisional frontend analysis.
         """
-        # 1. Attempt backend risk evaluation
+        # 1. Check if the incident payload already has authoritative backend risk assessment
+        if "risk_assessment" in incident and isinstance(incident["risk_assessment"], dict):
+            b_risk = incident["risk_assessment"]
+            return {
+                "incident_id": incident.get("incident_id"),
+                "risk_score": b_risk.get("risk_score", 0),
+                "severity": b_risk.get("severity", incident.get("severity", "UNKNOWN")),
+                "risk_tier": b_risk.get("risk_tier", "AUTHORITATIVE_BACKEND"),
+                "factors": b_risk.get("factors", []),
+                "movement_state": b_risk.get("movement_state", "N/A"),
+                "dwell_exposure_seconds": b_risk.get("dwell_exposure_seconds", 0.0),
+                "mitigation_priority": b_risk.get("mitigation_priority", "STANDARD"),
+                "source": "AUTHORITATIVE_BACKEND_RISK_ASSESSMENT",
+                "is_authoritative": True,
+            }
+
+        if "risk_score" in incident and incident.get("risk_score") is not None:
+            return {
+                "incident_id": incident.get("incident_id"),
+                "risk_score": incident.get("risk_score"),
+                "severity": incident.get("severity", "UNKNOWN"),
+                "risk_tier": f"{incident.get('severity')} (BACKEND)",
+                "factors": incident.get("risk_factors", []),
+                "movement_state": incident.get("movement_state", "N/A"),
+                "dwell_exposure_seconds": incident.get("dwell_time_seconds", 0.0),
+                "mitigation_priority": incident.get("mitigation_priority", "STANDARD"),
+                "source": "AUTHORITATIVE_BACKEND_RISK_ASSESSMENT",
+                "is_authoritative": True,
+            }
+
+        # 2. Check if backend module provides get_risk_assessment function
         if self._backend_copilot and hasattr(self._backend_copilot, "get_risk_assessment"):
             try:
                 res = self._backend_copilot.get_risk_assessment(incident.get("incident_id"))
                 if isinstance(res, dict):
+                    res["is_authoritative"] = True
+                    res["source"] = "AUTHORITATIVE_BACKEND_RISK_ASSESSMENT"
                     return res
             except Exception:
                 pass
 
-        # 2. Deterministic spatial risk evaluation
-        sev = incident.get("severity", "CRITICAL")
+        # 3. Transparent provisional frontend analysis (Rule-based heuristic)
+        sev = str(incident.get("severity", "CRITICAL")).upper()
         ev_type = incident.get("event_type", "UNKNOWN")
         frame_idx = incident.get("frame_index", 0)
         track_id = incident.get("track_id", "N/A")
 
-        score = 85 if sev == "CRITICAL" else 55
+        # Map severities: LOW, MEDIUM, HIGH, CRITICAL
+        if sev == "CRITICAL":
+            base_score = 85
+            tier = "CRITICAL HAZARD"
+            priority = "P1 - IMMEDIATE OPERATIONAL INTERVENTION"
+        elif sev == "HIGH":
+            base_score = 70
+            tier = "HIGH RISK"
+            priority = "P2 - HIGH PRIORITY REMEDIATION"
+        elif sev in ["WARNING", "MEDIUM"]:
+            base_score = 50
+            tier = "MODERATE RISK"
+            priority = "P3 - SCHEDULED REVIEW"
+        else:
+            base_score = 25
+            tier = "LOW RISK"
+            priority = "P4 - INFORMATIONAL ADVISORY"
+
+        # Dwell factor contribution
+        dwell_sec = round(frame_idx / 30.0016, 2)
+        if dwell_sec > 2.0:
+            dwell_factor = f"Dwell duration ~{dwell_sec}s exceeds 2.0s alert cooldown"
+            dwell_weight = "HIGH"
+        else:
+            dwell_factor = f"Initial entry transient (dwell ~{dwell_sec}s)"
+            dwell_weight = "MEDIUM"
+
         factors = [
             {
-                "factor": "Exclusion Zone Severity",
+                "factor": f"Exclusion Zone Rating ({sev})",
+                "weight": "CRITICAL" if sev == "CRITICAL" else "MEDIUM",
+                "description": f"Target area '{incident.get('zone_name', 'Zone 1')}' is classified as {sev} due to machinery envelope proximity.",
+            },
+            {
+                "factor": "2D Ground Contact Containment",
                 "weight": "HIGH",
-                "description": f"Target area '{incident.get('zone_name', 'Zone 1')}' is classified as {sev} due to automated machinery proximity.",
+                "description": f"Footprint coordinate {incident.get('ground_contact_point', [0, 0])} penetrates the restricted zone polygon.",
             },
             {
-                "factor": "Spatial Containment",
-                "weight": "CRITICAL",
-                "description": f"Ground contact footprint {incident.get('ground_contact_point', [0, 0])} penetrates the 2D polygon perimeter.",
-            },
-            {
-                "factor": "Operational State",
-                "weight": "MEDIUM",
-                "description": f"Event type is '{ev_type}'. " + (
-                    "Initial boundary breach." if "ENTRY" in ev_type else "Prolonged dwell exceeding cooldown interval."
-                ),
+                "factor": "Temporal Exposure State",
+                "weight": dwell_weight,
+                "description": dwell_factor,
             },
         ]
 
-        dwell_sec = round(frame_idx / 30.0016, 2)
-
         return {
             "incident_id": incident.get("incident_id"),
-            "risk_score": score,
+            "risk_score": base_score,
             "severity": sev,
-            "risk_tier": "HIGH RISK / CRITICAL HAZARD" if score >= 80 else "MODERATE WARNING",
+            "risk_tier": tier,
             "factors": factors,
-            "movement_state": "Stationary / Fine-motor manipulation (Equipment Cart)",
+            "movement_state": "Stationary / Equipment Cart Interaction",
             "dwell_exposure_seconds": dwell_sec,
-            "mitigation_priority": "P1 - IMMEDIATE OPERATIONAL REVIEW",
-            "source": "DETERMINISTIC_SPATIAL_RULES (Backend Risk Engine In-Development)",
+            "mitigation_priority": priority,
+            "source": "PROVISIONAL_FRONTEND_ANALYSIS (HEURISTIC RULE)",
+            "is_authoritative": False,
         }
 
     def answer_question(
         self,
-        question: str,
+        query: Optional[str] = None,
+        question: Optional[str] = None,
+        log_path: Optional[str] = None,
         incidents: Optional[List[Dict[str, Any]]] = None,
         incident_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Executes query resolution.
-        Returns response text, evidence links, and execution mode:
-        'REAL_BACKEND_AI', 'DETERMINISTIC_FALLBACK', or 'MOCK_PREVIEW'.
+        Executes query resolution. Supports Developer 1's signature answer_question(query, log_path=None).
+        Labels modes accurately:
+        - 'BACKEND COPILOT CONNECTED' when backend function runs.
+        - 'DETERMINISTIC FALLBACK MODE' when local logic runs.
         """
-        records = incidents if incidents is not None else self.load_incidents()
-        q_lower = question.lower()
+        q_raw = query or question or ""
+        target_path = log_path or self._active_dataset_path
+        records = incidents if incidents is not None else self.load_incidents(log_path=target_path)
+        q_lower = q_raw.lower().strip()
 
-        # 1. Check for real backend Copilot
+        # 1. Attempt Developer 1 backend Copilot
         if self._backend_copilot and hasattr(self._backend_copilot, "answer_question"):
             try:
-                ans = self._backend_copilot.answer_question(question)
+                try:
+                    ans = self._backend_copilot.answer_question(query=q_raw, log_path=target_path)
+                except TypeError:
+                    ans = self._backend_copilot.answer_question(q_raw)
                 return {
-                    "mode": "REAL_BACKEND_AI",
-                    "status_label": "BACKEND AI CONNECTED",
+                    "mode": "BACKEND COPILOT CONNECTED",
+                    "status_label": "BACKEND COPILOT CONNECTED",
                     "text": str(ans),
                     "evidence": [inc.get("incident_id") for inc in records[:2]],
                 }
-            except Exception as e:
-                # Backend failed, fall back
+            except Exception:
                 pass
 
-        # 2. Check for incident-specific context queries
+        # 2. Check for incident-specific contextual queries
         if incident_context:
             inc_id = incident_context.get("incident_id", "Unknown")
             f_idx = incident_context.get("frame_index", 0)
@@ -406,8 +541,8 @@ class BackendAdapter:
                     f"3. **Absence of Machine Interlock:** No active lock-out / tag-out (LOTO) signal was received from industrial PLCs at timestamp $t={t_sec}\\text{{s}}$ (Frame {f_idx})."
                 )
                 return {
-                    "mode": "DETERMINISTIC_FALLBACK",
-                    "status_label": "DETERMINISTIC INCIDENT FORENSICS",
+                    "mode": "DETERMINISTIC FALLBACK MODE",
+                    "status_label": "DETERMINISTIC FALLBACK MODE",
                     "text": text,
                     "evidence": [inc_id],
                 }
@@ -422,8 +557,8 @@ class BackendAdapter:
                     f"- **Zone Boundary:** Incursion into `{z_name}` verified via Ray-Casting Point-in-Polygon (PIP) containment."
                 )
                 return {
-                    "mode": "DETERMINISTIC_FALLBACK",
-                    "status_label": "DETERMINISTIC INCIDENT FORENSICS",
+                    "mode": "DETERMINISTIC FALLBACK MODE",
+                    "status_label": "DETERMINISTIC FALLBACK MODE",
                     "text": text,
                     "evidence": [inc_id],
                 }
@@ -437,8 +572,8 @@ class BackendAdapter:
                     f"with zero boundary exit events recorded before clip termination."
                 )
                 return {
-                    "mode": "DETERMINISTIC_FALLBACK",
-                    "status_label": "DETERMINISTIC INCIDENT FORENSICS",
+                    "mode": "DETERMINISTIC FALLBACK MODE",
+                    "status_label": "DETERMINISTIC FALLBACK MODE",
                     "text": text,
                     "evidence": [inc_id],
                 }
@@ -453,8 +588,8 @@ class BackendAdapter:
                     f"4. **Audio-Visual Strobe Alert:** Install directional local strobes triggering on `ZONE_INTRUSION_ENTRY`."
                 )
                 return {
-                    "mode": "DETERMINISTIC_FALLBACK",
-                    "status_label": "DETERMINISTIC INCIDENT FORENSICS",
+                    "mode": "DETERMINISTIC FALLBACK MODE",
+                    "status_label": "DETERMINISTIC FALLBACK MODE",
                     "text": text,
                     "evidence": [inc_id],
                 }
@@ -468,15 +603,14 @@ class BackendAdapter:
                     f"Action Required: Operator review of physical safety barrier integrity and confirmation of worker safety protocol training."
                 )
                 return {
-                    "mode": "DETERMINISTIC_FALLBACK",
-                    "status_label": "DETERMINISTIC INCIDENT FORENSICS",
+                    "mode": "DETERMINISTIC FALLBACK MODE",
+                    "status_label": "DETERMINISTIC FALLBACK MODE",
                     "text": text,
                     "evidence": [inc_id],
                 }
 
         # 3. Deterministic evidence-backed fallback over loaded records
-        q_lower = question.lower()
-        stats = self.get_incident_statistics(records)
+        stats = self.get_incident_statistics(incidents=records)
         avail = stats["available"]
         derived = stats["derived"]
 
@@ -490,8 +624,8 @@ class BackendAdapter:
                 "- **Total Verified Breaches:** 6 Actionable Incidents"
             )
             return {
-                "mode": "DETERMINISTIC_FALLBACK",
-                "status_label": "DETERMINISTIC SAFETY REASONING (BACKEND COPILOT OFFLINE)",
+                "mode": "DETERMINISTIC FALLBACK MODE",
+                "status_label": "DETERMINISTIC FALLBACK MODE",
                 "text": text,
                 "evidence": [inc.get("incident_id") for inc in records],
             }
@@ -504,14 +638,14 @@ class BackendAdapter:
                 "the `Heavy Equipment Perimeter A` boundary through frames 64 ($t=2.21\\text{s}$) and 125 ($t=4.24\\text{s}$)."
             )
             return {
-                "mode": "DETERMINISTIC_FALLBACK",
-                "status_label": "DETERMINISTIC SAFETY REASONING (BACKEND COPILOT OFFLINE)",
+                "mode": "DETERMINISTIC FALLBACK MODE",
+                "status_label": "DETERMINISTIC FALLBACK MODE",
                 "text": text,
                 "evidence": [inc.get("incident_id") for inc in records if "OCCUPANCY" in inc.get("event_type", "")],
             }
 
         elif any(w in q_lower for w in ["critical", "violation", "breach", "danger"]):
-            crit_events = [inc for inc in records if inc.get("severity") == "CRITICAL"]
+            crit_events = [inc for inc in records if str(inc.get("severity", "")).upper() == "CRITICAL"]
             text = (
                 f"### High-Risk Critical Violations ({len(crit_events)} Records)\n\n"
                 "All recorded safety alerts are classified as **CRITICAL** due to immediate proximity to automated equipment:\n\n"
@@ -520,8 +654,8 @@ class BackendAdapter:
                 "3. **Frame 125 ($t=4.24\\text{s}$):** Continued active presence after 4.0s cooldown."
             )
             return {
-                "mode": "DETERMINISTIC_FALLBACK",
-                "status_label": "DETERMINISTIC SAFETY REASONING (BACKEND COPILOT OFFLINE)",
+                "mode": "DETERMINISTIC FALLBACK MODE",
+                "status_label": "DETERMINISTIC FALLBACK MODE",
                 "text": text,
                 "evidence": [inc.get("incident_id") for inc in crit_events],
             }
@@ -534,8 +668,8 @@ class BackendAdapter:
                 "creating simultaneous entanglement risks."
             )
             return {
-                "mode": "DETERMINISTIC_FALLBACK",
-                "status_label": "DETERMINISTIC SAFETY REASONING (BACKEND COPILOT OFFLINE)",
+                "mode": "DETERMINISTIC FALLBACK MODE",
+                "status_label": "DETERMINISTIC FALLBACK MODE",
                 "text": text,
                 "evidence": [records[0].get("incident_id") if records else "N/A"],
             }
@@ -551,8 +685,8 @@ class BackendAdapter:
                 f"- **Average Detection Confidence:** {derived['avg_detection_confidence']}% via TensorRT YOLO11s."
             )
             return {
-                "mode": "DETERMINISTIC_FALLBACK",
-                "status_label": "DETERMINISTIC SAFETY REASONING (BACKEND COPILOT OFFLINE)",
+                "mode": "DETERMINISTIC FALLBACK MODE",
+                "status_label": "DETERMINISTIC FALLBACK MODE",
                 "text": text,
                 "evidence": [inc.get("incident_id") for inc in records],
             }
@@ -560,32 +694,46 @@ class BackendAdapter:
         else:
             text = (
                 f"### Sentinel Safety Copilot\n\n"
-                f"Analyzed query: *\"{question}\"*\n\n"
-                f"Based on authentic DeepStream perception data ({avail['total_incidents']} verified records):\n"
+                f"Analyzed query: *\"{q_raw}\"*\n\n"
+                f"Based on authentic DeepStream perception data ({avail['total_incidents']} verified records in `{target_path}`):\n"
                 f"- **Tracked Entities:** {avail['active_tracks']} workers observed.\n"
                 f"- **Active Status:** All recorded violations occurred in `Heavy Equipment Perimeter A`.\n"
-                f"- Please select one of the suggested query pills for granular forensic breakdowns."
+                f"- Note: If querying unobserved facts (e.g., worker personal data, environmental temperature), "
+                f"such telemetry is outside the surveillance perception metadata scope."
             )
             return {
-                "mode": "DETERMINISTIC_FALLBACK",
-                "status_label": "DETERMINISTIC SAFETY REASONING (BACKEND COPILOT OFFLINE)",
+                "mode": "DETERMINISTIC FALLBACK MODE",
+                "status_label": "DETERMINISTIC FALLBACK MODE",
                 "text": text,
                 "evidence": [],
             }
 
-    def generate_incident_report(self, output_path: Optional[str] = None) -> Dict[str, Any]:
-        """Triggers or requests backend incident report generation."""
+    def generate_incident_report(
+        self,
+        log_path: Optional[str] = None,
+        output_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Triggers or requests backend incident report generation.
+        Supports Developer 1's signature generate_incident_report(log_path=None, output_path=None).
+        """
+        target_log = log_path or self._active_dataset_path
+        target_out = output_path or "data/output/audit_report.json"
+
         if self._backend_copilot and hasattr(self._backend_copilot, "generate_incident_report"):
             try:
-                res = self._backend_copilot.generate_incident_report(output_path)
-                return {"success": True, "message": str(res)}
+                try:
+                    res = self._backend_copilot.generate_incident_report(log_path=target_log, output_path=target_out)
+                except TypeError:
+                    res = self._backend_copilot.generate_incident_report(target_out)
+                return {"success": True, "message": str(res), "path": target_out}
             except Exception as e:
                 return {"success": False, "message": f"Backend report generation error: {str(e)}"}
 
         return {
             "success": True,
             "message": "Report generation contract ready. Backend generator module pending from Developer 1.",
-            "path": output_path or "data/output/audit_report.json",
+            "path": target_out,
         }
 
     def generate_investigation_report_markdown(
@@ -614,6 +762,7 @@ class BackendAdapter:
         risk = risk_data or self.get_risk_assessment(incident)
         risk_score = risk.get("risk_score", 85)
         risk_tier = risk.get("risk_tier", "CRITICAL")
+        risk_source = risk.get("source", "Provisional")
 
         traj = trajectory_data or self.get_trajectory(int(track) if str(track).isdigit() else 0)
 
@@ -642,6 +791,7 @@ class BackendAdapter:
 ## 2. Risk Assessment & Contributing Factors
 
 - **Calculated Risk Score:** **{risk_score}/100** (`{risk_tier}`)
+- **Risk Assessment Provenance:** `{risk_source}`
 - **Mitigation Priority:** `{risk.get('mitigation_priority', 'P1')}`
 - **Movement State in Hazard Area:** `{risk.get('movement_state', 'Stationary')}`
 - **Estimated Dwell Duration:** `{risk.get('dwell_exposure_seconds', t_sec)} seconds`
@@ -658,6 +808,7 @@ class BackendAdapter:
 
 - **Total Recorded Trajectory Points:** {traj.get('total_points', 0)} frames
 - **Spatial Coverage Window:** Frame {traj.get('start_frame', 0)} ({traj.get('start_time', 0)}s) &rarr; Frame {traj.get('end_frame', 0)} ({traj.get('end_time', 0)}s)
+- **Observed Points:** {traj.get('observed_points_count', 0)} | **Interpolated Points:** {traj.get('interpolated_points_count', 0)} (Zero synthetic interpolation)
 - **Net Image-Space Displacement:** {traj.get('net_displacement_norm', 0.0)} normalized units
 - **Cumulative Path Length:** {traj.get('path_length_norm', 0.0)} normalized units
 - **Mean Image Velocity:** {traj.get('mean_velocity_norm_per_sec', 0.0)} units/sec
@@ -681,7 +832,7 @@ class BackendAdapter:
 ### Standard Factory Recommended Mitigations:
 1. **Type 4 Optoelectronic Interlocks:** Deploy optical light curtains around Perimeter A tied to motor breaker circuits.
 2. **OSHA High-Visibility Floor Striping:** Repaint hazard exclusion perimeter lines with reflective industrial resin.
-3. **Automated Alarm Sirens:** Couple DeepStream JSON incident broadcasts to local audio-visual strobe towers.
+3. **Automated Alarm Sirens:** Couple DeepStream JSON incident alerts to local audio-visual strobe towers.
 
 ---
 

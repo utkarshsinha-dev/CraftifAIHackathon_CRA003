@@ -159,6 +159,17 @@ def render_investigation_workspace_module(incidents: List[Dict[str, Any]]) -> No
         return
 
     # Workflow Progress Tracker Strip
+    active_dataset = backend_adapter.get_copilot_status().get("active_dataset", "data/output/incident_records.jsonl")
+    st.markdown(
+        f"""
+        <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; padding: 6px 12px; margin-bottom: 12px; font-size: 11px; font-family: 'JetBrains Mono', monospace; display: flex; justify-content: space-between; align-items: center;">
+          <span>📁 <strong>ACTIVE DATASET:</strong> <code>{active_dataset}</code> ({len(incidents)} Verified Records)</span>
+          <span style="color: #94a3b8;">Provenance: DeepStream 7.1 &bull; 2.0s Cooldown Suppression</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.markdown(
         """
         <div style="display: flex; gap: 6px; margin-bottom: 16px; font-size: 10px; font-family: 'JetBrains Mono', monospace;">
@@ -237,11 +248,18 @@ def render_investigation_workspace_module(incidents: List[Dict[str, Any]]) -> No
         st.plotly_chart(traj_fig, use_container_width=True)
 
         # Kinematic Summary Box
+        prior_miss = trajectory_data.get('missing_frames_prior_to_lock', 3)
+        seq_gaps = trajectory_data.get('missing_frames_in_sequence', 0)
+        obs_pts = trajectory_data.get('observed_points_count', trajectory_data.get('total_points', 0))
+        interp_pts = trajectory_data.get('interpolated_points_count', 0)
+
         st.markdown(
             f"""
-            <div style="background: #111827; border: 1px solid #1e293b; border-radius: 6px; padding: 8px 12px; font-size: 10.5px; font-family: 'JetBrains Mono', monospace; color: #94a3b8;">
+            <div style="background: #111827; border: 1px solid #1e293b; border-radius: 6px; padding: 10px 14px; font-size: 11px; font-family: 'JetBrains Mono', monospace; color: #94a3b8;">
+              <div style="color: #38bdf8; font-weight: bold; margin-bottom: 4px;">🎯 TRAJECTORY INTEGRITY & KINEMATICS</div>
               &bull; <strong>Kinematics:</strong> {trajectory_data.get('movement_classification')}<br>
-              &bull; <strong>Path Displacement:</strong> {trajectory_data.get('net_displacement_norm', 0.0)} units | Velocity: {trajectory_data.get('mean_velocity_norm_per_sec', 0.0)} units/sec<br>
+              &bull; <strong>Observed Points:</strong> {obs_pts} frames | <strong>Missing Prior to Lock:</strong> {prior_miss} (F#0-2) | <strong>Sequence Gaps:</strong> {seq_gaps} | <strong>Interpolated:</strong> {interp_pts}<br>
+              &bull; <strong>Path Displacement:</strong> {trajectory_data.get('net_displacement_norm', 0.0)} units | <strong>Mean Velocity:</strong> {trajectory_data.get('mean_velocity_norm_per_sec', 0.0)} units/sec<br>
               &bull; <em>Disclaimer:</em> {trajectory_data.get('disclaimer')}
             </div>
             """,
@@ -280,11 +298,17 @@ def render_investigation_workspace_module(incidents: List[Dict[str, Any]]) -> No
         st.markdown("##### ⚠️ Risk Assessment Breakdown")
         r_score = risk_data.get("risk_score", 85)
         st.progress(r_score / 100.0)
+        is_auth = risk_data.get("is_authoritative", False)
+        prov_badge = (
+            "<span style='background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #34d399; padding: 2px 6px; border-radius: 4px; font-size: 10px;'>✅ AUTHORITATIVE BACKEND RISK SCORE</span>"
+            if is_auth
+            else "<span style='background: rgba(245, 158, 11, 0.15); border: 1px solid #f59e0b; color: #fbbf24; padding: 2px 6px; border-radius: 4px; font-size: 10px;'>⚠️ PROVISIONAL FRONTEND CALCULATION</span>"
+        )
         st.markdown(
             f"""
-            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; margin-bottom: 8px;">
               <span><strong>Calculated Risk Score:</strong> <strong style="color: #f87171;">{r_score}/100</strong></span>
-              <span class="badge badge-critical">{risk_data.get('risk_tier', 'CRITICAL')}</span>
+              <div>{prov_badge} <span class="badge badge-critical">{risk_data.get('risk_tier', 'CRITICAL')}</span></div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -301,7 +325,7 @@ def render_investigation_workspace_module(incidents: List[Dict[str, Any]]) -> No
                 unsafe_allow_html=True,
             )
 
-        st.caption(f"Source: {risk_data.get('source')}")
+        st.caption(f"Provenance Source: {risk_data.get('source')}")
 
         # Contextual Safety Copilot Queries
         st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)

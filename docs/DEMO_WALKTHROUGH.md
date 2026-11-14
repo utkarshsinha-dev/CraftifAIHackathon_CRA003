@@ -101,29 +101,31 @@ When presenting Sentinel Vision AI 2.0 to judges, follow this authoritative 3-mi
 
 ## 4. Backend Integration Contract Specification
 
-The dashboard communicates through `BackendAdapter` (`app/components/backend_adapter.py`), which exposes standard function contracts for Developer 1's backend modules:
+The dashboard communicates through `BackendAdapter` (`app/components/backend_adapter.py`), which exposes robust dual-signature function contracts for Developer 1's backend modules (`src/safety_copilot.py`, `src/zone_monitor.py`):
 
 ```python
 from app.components.backend_adapter import backend_adapter
 
-# 1. Load incidents from JSONL or backend persistence
-incidents = backend_adapter.load_incidents(path=None)
+# 1. Load incidents from JSONL or backend persistence (supports log_path or path)
+incidents = backend_adapter.load_incidents(log_path="data/output/incident_records.jsonl")
 
-# 2. Retrieve categorized statistics (Available vs. Derived vs. Unavailable)
-stats = backend_adapter.get_incident_statistics(incidents)
+# 2. Retrieve categorized statistics (supports log_path keyword or direct incident list)
+stats = backend_adapter.get_incident_statistics(log_path="data/output/incident_records.jsonl")
+# or: stats = backend_adapter.get_incident_statistics(incidents)
 
-# 3. Retrieve 2D trajectory kinematics for a tracked entity
+# 3. Retrieve 2D trajectory kinematics for a tracked entity across 160 frames
 trajectory = backend_adapter.get_trajectory(track_id=0)
 
-# 4. Retrieve multi-factor risk assessment
+# 4. Retrieve multi-factor risk assessment (authoritative backend or transparent provisional rule)
 risk = backend_adapter.get_risk_assessment(incident)
 
-# 5. Query Safety Copilot (with optional incident-grounded context)
+# 5. Query Safety Copilot (supports query=..., question=..., log_path=..., or direct incidents)
 response = backend_adapter.answer_question(
-    question="Why was this incident classified as critical?",
-    incidents=incidents,
+    query="Why was this incident classified as critical?",
+    log_path="data/output/incident_records.jsonl",
     incident_context=incident
 )
+# Modes: "BACKEND COPILOT CONNECTED" vs "DETERMINISTIC FALLBACK MODE"
 
 # 6. Generate official Markdown investigation package
 report_md = backend_adapter.generate_investigation_report_markdown(

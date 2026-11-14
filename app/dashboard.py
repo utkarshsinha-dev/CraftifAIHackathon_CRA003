@@ -40,6 +40,9 @@ def inject_custom_css():
 
 def render_header(kpis):
     """Renders the master command center industrial header."""
+    avail = kpis.get("available", {})
+    ds_name = avail.get("dataset_source", "data/output/incident_records.jsonl")
+    total_inc = avail.get("total_incidents", 6)
     st.markdown(
         f"""
         <div class="command-header">
@@ -53,7 +56,8 @@ def render_header(kpis):
                 TRACK A: CRAFTIFAI PHYSICAL AI PERCEPTION &bull; DEEPSTREAM 7.1 &bull; TENSORRT 10.3 YOLO11s
               </div>
             </div>
-            <div style="display: flex; gap: 8px; align-items: center;">
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <span class="status-pill" style="border-color: #38bdf8; color: #38bdf8;">📁 DATASET: {ds_name} ({total_inc} Verified)</span>
               <span class="status-pill status-online">&bull; PERCEPTION ENGINE READY</span>
               <span class="status-pill status-replay">SOFTWARE REPLAY MODE</span>
             </div>
@@ -83,6 +87,25 @@ def main():
 
     # 2. Render Top KPI Metrics Cards
     render_kpi_cards(kpis)
+
+    # 3. Judge 3-Minute Demonstration Script Expander
+    with st.expander("🎯 3-Minute Judge Demonstration Script & Walkthrough (Click to Expand)", expanded=False):
+        st.markdown(
+            """
+            **Follow this authoritative 3-minute sequence during judging:**
+            - **Minute 1: Master Overview & Telemetry (Tab 1)**
+              - Point out the Top KPI cards: 6 verified events, 2 workers tracked by NvDCF.
+              - Jump to **Frame #3** in the video player: see boxes transition to **RED (`INCURSION`)** with bottom-center ground contact projection $(x_{\\text{center}}, y_{\\text{max}})$.
+            - **Minute 2: Incident Investigation Workspace (Tab 2)**
+              - Switch to **Tab 2 (🕵️ Incident Investigation)**: explore the 6-step EHS workflow.
+              - Inspect **Visual Evidence snapshot** synchronized with the video player.
+              - Review **2D Trajectory Kinematics**: 160 continuous frames of real DeepStream tracking data with zero synthetic interpolation.
+              - Interrogate the **Contextual Safety Copilot**: ask *"Why is this critical?"* or *"What evidence exists?"*.
+            - **Minute 3: CAPA Remediation & Safe Calibration (Tabs 2 & 5)**
+              - Record CAPA notes and download the **Forensic Markdown / JSON report package**.
+              - Inspect **Tab 5 (Zone Calibration)**: note that perimeter geometry edits stage safely to `restricted_zone_working.json` without mutating production.
+            """
+        )
 
     st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
 

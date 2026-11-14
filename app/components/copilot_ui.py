@@ -80,7 +80,7 @@ def render_copilot_module(incidents: List[Dict[str, Any]]) -> None:
             evidence = msg.get("evidence", [])
 
             if mode and mode != "SYSTEM":
-                badge_color = "#34d399" if mode == "REAL_BACKEND_AI" else "#fbbf24"
+                badge_color = "#34d399" if "BACKEND" in str(mode) else "#fbbf24"
                 st.markdown(
                     f"""
                     <div style="font-size: 10px; color: {badge_color}; font-family: 'JetBrains Mono', monospace; margin-top: 4px;">
@@ -121,7 +121,7 @@ def render_copilot_module(incidents: List[Dict[str, Any]]) -> None:
 
         with st.chat_message("assistant"):
             st.markdown(result["text"])
-            badge_color = "#34d399" if result["mode"] == "REAL_BACKEND_AI" else "#fbbf24"
+            badge_color = "#34d399" if "BACKEND" in str(result['mode']) else "#fbbf24"
             st.markdown(
                 f"""
                 <div style="font-size: 10px; color: {badge_color}; font-family: 'JetBrains Mono', monospace; margin-top: 4px;">
