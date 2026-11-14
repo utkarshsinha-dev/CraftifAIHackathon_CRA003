@@ -101,6 +101,7 @@ class DeepStreamMetadataAdapter:
         track_id: Optional[int] = None,
         frame_index: Optional[int] = None,
         timestamp_epoch: Optional[float] = None,
+        video_time_s: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
         """
         Validates and routes a single perception record to the zone monitor.
@@ -125,9 +126,11 @@ class DeepStreamMetadataAdapter:
         try:
             f_idx = int(frame_index) if frame_index is not None else None
             t_epoch = float(timestamp_epoch) if timestamp_epoch is not None else None
+            v_time = float(video_time_s) if video_time_s is not None else None
         except (ValueError, TypeError):
             f_idx = None
             t_epoch = None
+            v_time = None
 
         return self.zone_monitor.process_detection(
             bbox=bbox_normalized,
@@ -135,6 +138,7 @@ class DeepStreamMetadataAdapter:
             track_id=cleaned_track_id,
             frame_index=f_idx,
             timestamp_epoch=t_epoch,
+            video_time_s=v_time,
         )
 
     def process_raw_dict(self, record: Any) -> List[Dict[str, Any]]:
@@ -151,6 +155,7 @@ class DeepStreamMetadataAdapter:
             track_id = record.get("track_id", record.get("objectId", record.get("object_id")))
             frame_index = record.get("frame_index", record.get("frame_num", record.get("frameNum")))
             timestamp = record.get("timestamp_epoch", record.get("timestamp"))
+            video_time_s = record.get("video_time_s", record.get("video_time", record.get("pts_s")))
 
             # Bounding box handling (accepts normalized or raw rect_params)
             if "bbox" in record and isinstance(record["bbox"], (list, tuple)) and len(record["bbox"]) == 4:
@@ -186,6 +191,7 @@ class DeepStreamMetadataAdapter:
                 track_id=track_id,
                 frame_index=frame_index,
                 timestamp_epoch=timestamp,
+                video_time_s=video_time_s,
             )
         except Exception as e:
             logger.debug(f"Skipping malformed detection record: {e}")
