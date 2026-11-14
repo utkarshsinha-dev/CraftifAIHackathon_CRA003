@@ -26,14 +26,18 @@ _CACHE_MTIME: Optional[float] = None
 _CACHE_DATA: Optional[List[Dict[str, Any]]] = None
 
 
-def load_incidents(path: Optional[str] = None) -> List[Dict[str, Any]]:
+def load_incidents(
+    path: Optional[str] = None,
+    log_path: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """
     Loads all structured incident records from a JSON Lines file.
     Returns empty list safely if file is missing or empty.
     Caches parsed records based on file modification timestamp to optimize repeated UI reruns.
+    Supports both path and log_path parameter naming.
     """
     global _CACHE_PATH, _CACHE_MTIME, _CACHE_DATA
-    target_path = path or DEFAULT_LOG_PATH
+    target_path = path or log_path or DEFAULT_LOG_PATH
     if not os.path.isfile(target_path):
         return []
 
@@ -65,12 +69,15 @@ def load_incidents(path: Optional[str] = None) -> List[Dict[str, Any]]:
 def get_incident_statistics(
     incidents: Optional[List[Dict[str, Any]]] = None,
     path: Optional[str] = None,
+    log_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Computes exact summary metrics for dashboard KPI cards.
     Maintains complete backward compatibility while offering enhanced risk metrics.
+    Supports both path and log_path parameter naming.
     """
-    records = incidents if incidents is not None else load_incidents(path)
+    target_path = path or log_path
+    records = incidents if incidents is not None else load_incidents(target_path)
     total = len(records)
     if total == 0:
         return {
@@ -146,37 +153,45 @@ def get_incident_statistics(
 
 
 def get_incident_details(
-    event_id: str,
+    event_id: Optional[str] = None,
     incidents: Optional[List[Dict[str, Any]]] = None,
     path: Optional[str] = None,
+    incident_id: Optional[str] = None,
+    log_path: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Retrieves full telemetry, bounding box, kinematics, and risk breakdown
-    for a specific incident by its incident_id.
+    for a specific incident by its incident_id / event_id.
     """
-    if not event_id:
+    target_id = event_id if event_id is not None else incident_id
+    if not target_id:
         return None
-    records = incidents if incidents is not None else load_incidents(path)
+    target_path = path or log_path
+    records = incidents if incidents is not None else load_incidents(target_path)
     for inc in records:
-        if inc.get("incident_id") == event_id:
+        if inc.get("incident_id") == target_id:
             return inc
     return None
 
 
 def answer_question(
-    question: str,
+    question: Optional[str] = None,
     incidents: Optional[List[Dict[str, Any]]] = None,
     path: Optional[str] = None,
+    query: Optional[str] = None,
+    log_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Passes a natural language inquiry to the Safety Copilot and returns
     an evidence-grounded answer.
+    Supports both question and query parameter naming.
     """
-    log_file = path or DEFAULT_LOG_PATH
+    prompt_text = question if question is not None else (query or "")
+    log_file = path or log_path or DEFAULT_LOG_PATH
     copilot = SafetyCopilot(incident_log_path=log_file)
     if incidents is not None:
         copilot.incidents = incidents
-    return copilot.answer_question(question)
+    return copilot.answer_question(prompt_text)
 
 
 def generate_incident_report(
@@ -184,12 +199,15 @@ def generate_incident_report(
     incidents: Optional[List[Dict[str, Any]]] = None,
     path: Optional[str] = None,
     format: str = "markdown",
+    log_path: Optional[str] = None,
 ) -> str:
     """
     Generates a structured EHS incident audit report.
     Returns the report text and writes to output_path if provided.
+    Supports both path and log_path parameter naming.
     """
     from scripts.generate_ehs_report import create_ehs_report
-    records = incidents if incidents is not None else load_incidents(path)
+    target_path = path or log_path
+    records = incidents if incidents is not None else load_incidents(target_path)
     target_out = output_path or "data/output/EHS_INCIDENT_REPORT.md"
     return create_ehs_report(incidents=records, output_path=target_out, format=format)

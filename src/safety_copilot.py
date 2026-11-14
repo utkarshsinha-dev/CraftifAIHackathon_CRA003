@@ -144,15 +144,17 @@ class SafetyCopilot:
 
         stats = self.get_summary_statistics()
 
-        # 1. Summary / Overview Queries
-        if any(w in q_lower for w in ["summary", "overview", "what happened", "briefing", "report", "stats"]):
+        # 1. Summary / Overview / Event Count Queries
+        if any(w in q_lower for w in ["summar", "overview", "what happened", "brief", "report", "stats", "how many", "count", "breakdown"]):
             evidence = [self._format_evidence_citation(i) for i in self.incidents[:6]]
             tracks_str = ', '.join(stats['unique_tracks']) if stats['unique_tracks'] else 'None'
             zones_str = ', '.join(stats['zones_breached']) if stats['zones_breached'] else 'None'
+            events_breakdown_str = ', '.join(f"{k}: {v}" for k, v in stats.get("event_breakdown", {}).items())
             answer = (
                 f"Sentinel Vision AI captured a total of {stats['total_incidents']} safety events across "
                 f"{len(stats['unique_tracks'])} detected personnel (Tracks: {tracks_str}). "
-                f"Breakdown: {stats['critical_count']} CRITICAL, {stats['warning_count']} WARNING, {stats['info_count']} INFO. "
+                f"Breakdown: {stats['critical_count']} CRITICAL, {stats['warning_count']} WARNING, {stats['info_count']} INFO "
+                f"({events_breakdown_str}). "
                 f"Hazardous areas breached: {zones_str}. "
                 f"Peak dwell duration reached {stats['max_dwell_s']}s inside restricted boundaries. "
                 f"Cooldown alert suppression maintained perimeter safety telemetry without spam."
@@ -324,7 +326,22 @@ class SafetyCopilot:
                 "confidence": 1.0,
             }
 
-        # 8. Fallback: Executive Safety Briefing
+        # 8. Limitations & Unavailable Telemetry Inquiries
+        if any(w in q_lower for w in ["unavailable", "limitation", "cannot know", "not available", "missing", "what info"]):
+            answer = (
+                "Perimeter telemetry limitations: The system operates on 2D camera ground-contact projection. "
+                "Physical biometric worker identities, medical status, badge serial numbers, and physical metric velocity (m/s) "
+                "are unavailable without external badge RFID integration and camera perspective homography calibration. "
+                "All recorded safety breaches are strictly derived from computer vision spatial containment telemetry."
+            )
+            return {
+                "answer": answer,
+                "intent": "limitations_inquiry",
+                "evidence": [],
+                "confidence": 1.0,
+            }
+
+        # 9. Fallback: Executive Safety Briefing
         evidence = [self._format_evidence_citation(i) for i in self.incidents[:4]]
         tracks_str = ', '.join(stats['unique_tracks']) if stats['unique_tracks'] else 'None'
         zones_str = ', '.join(stats['zones_breached']) if stats['zones_breached'] else 'None'
