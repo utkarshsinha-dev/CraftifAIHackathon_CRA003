@@ -106,8 +106,16 @@ class ZoneIntrusionMonitor:
         Calculates ground contact point (bottom-center of bounding box).
         bbox: [x_min, y_min, x_max, y_max] in normalized coordinates [0.0, 1.0].
         """
-        x_min, y_min, x_max, y_max = bbox
-        return ((x_min + x_max) / 2.0, y_max)
+        if not bbox or len(bbox) < 4:
+            return (0.5, 1.0)
+        try:
+            x_min = float(bbox[0])
+            y_min = float(bbox[1])
+            x_max = float(bbox[2])
+            y_max = float(bbox[3])
+            return ((x_min + x_max) / 2.0, y_max)
+        except (ValueError, TypeError):
+            return (0.5, 1.0)
 
     def _resolve_entity_id(
         self,
@@ -142,6 +150,12 @@ class ZoneIntrusionMonitor:
         gx, gy = ground_point
 
         for uid, udata in self.untracked_registry.items():
+            # An untracked entity can only be assigned to one detection per frame / timestamp
+            if frame_index is not None and udata.get("last_frame") == frame_index:
+                continue
+            if frame_index is None and abs(udata.get("last_time", 0.0) - video_time) < 1e-4:
+                continue
+
             ux, uy = udata["last_point"]
             dist = math.sqrt((gx - ux) ** 2 + (gy - uy) ** 2)
             if dist <= self.max_untracked_dist and dist < min_dist:
@@ -196,6 +210,19 @@ class ZoneIntrusionMonitor:
         dt = video_time_s - prev_time
 
         # Update trajectory buffer
+        if dt < 0:
+            # Clock jump or out-of-order frame: reset trajectory history
+            traj.clear()
+            traj.append((video_time_s, ground_point))
+            recent_pts = [[round(p[1][0], 4), round(p[1][1], 4)] for p in traj]
+            return {
+                "velocity_normalized": [0.0, 0.0],
+                "speed_normalized": 0.0,
+                "direction": "STATIONARY",
+                "motion_state": "stationary",
+                "reliability": "INITIALIZING",
+            }, recent_pts
+
         traj.append((video_time_s, ground_point))
         recent_pts = [[round(p[1][0], 4), round(p[1][1], 4)] for p in traj]
 
@@ -262,28 +289,35 @@ class ZoneIntrusionMonitor:
         Returns a list of generated incident records (if any).
         """
         # 1. Temporal grounding
-        if video_time_s is not None:
-            v_time = float(video_time_s)
-        elif timestamp_epoch is not None:
-            # Handle synthetic test timestamps vs relative PTS
-            if timestamp_epoch < 1e8:
-                v_time = float(timestamp_epoch)
+        try:
+            if video_time_s is not None and math.isfinite(float(video_time_s)):
+                v_time = max(0.0, float(video_time_s))
+            elif timestamp_epoch is not None and math.isfinite(float(timestamp_epoch)):
+                t_val = float(timestamp_epoch)
+                if t_val < 1e8:
+                    v_time = max(0.0, t_val)
+                else:
+                    if self._first_seen_time is None:
+                        self._first_seen_time = t_val
+                    v_time = max(0.0, t_val - self._first_seen_time)
             else:
+                now_t = time.time()
                 if self._first_seen_time is None:
-                    self._first_seen_time = timestamp_epoch
-                v_time = float(timestamp_epoch - self._first_seen_time)
-        else:
-            if self._first_seen_time is None:
-                self._first_seen_time = time.time()
-            v_time = float(time.time() - self._first_seen_time)
+                    self._first_seen_time = now_t
+                v_time = max(0.0, now_t - self._first_seen_time)
+        except (ValueError, TypeError):
+            v_time = 0.0
 
         # Wall clock ISO computation
-        if timestamp_epoch is not None and timestamp_epoch >= 1e8:
-            wall_clock_epoch = float(timestamp_epoch)
-        else:
-            wall_clock_epoch = self.session_start_epoch + max(0.0, v_time)
-
-        timestamp_iso = datetime.fromtimestamp(wall_clock_epoch, tz=timezone.utc).isoformat()
+        try:
+            if timestamp_epoch is not None and math.isfinite(float(timestamp_epoch)) and float(timestamp_epoch) >= 1e8:
+                wall_clock_epoch = float(timestamp_epoch)
+            else:
+                wall_clock_epoch = self.session_start_epoch + max(0.0, v_time)
+            timestamp_iso = datetime.fromtimestamp(wall_clock_epoch, tz=timezone.utc).isoformat()
+        except (ValueError, TypeError, OverflowError):
+            wall_clock_epoch = self.session_start_epoch
+            timestamp_iso = datetime.fromtimestamp(wall_clock_epoch, tz=timezone.utc).isoformat()
         ground_point = self.compute_ground_contact(bbox)
         generated_incidents = []
 
@@ -344,6 +378,7 @@ class ZoneIntrusionMonitor:
                         "zone_name": zone_name,
                         "severity": severity,
                         "track_id": track_id,
+                        "entity_id": str(entity_id),
                         "confidence": round(float(confidence), 4),
                         "bbox": [round(float(c), 4) for c in bbox],
                         "ground_contact_point": [round(ground_point[0], 4), round(ground_point[1], 4)],
@@ -385,6 +420,7 @@ class ZoneIntrusionMonitor:
                         "zone_name": zone_name,
                         "severity": "INFO",
                         "track_id": track_id,
+                        "entity_id": str(entity_id),
                         "confidence": round(float(confidence), 4),
                         "bbox": [round(float(c), 4) for c in bbox],
                         "ground_contact_point": [round(ground_point[0], 4), round(ground_point[1], 4)],

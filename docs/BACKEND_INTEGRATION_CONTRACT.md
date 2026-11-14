@@ -94,6 +94,13 @@ Computes aggregate metrics for dashboard KPI cards.
     "warning_count": 0,
     "info_count": 0,
     "max_dwell_s": 4.07,
+    "max_risk_score": 85.0,
+    "average_risk_score": 82.5,
+    "severity_counts": {
+      "CRITICAL": 6,
+      "WARNING": 0,
+      "INFO": 0
+    },
     "zones_breached": ["Heavy Equipment Perimeter A"],
     "event_breakdown": {
       "ZONE_INTRUSION_ENTRY": 2,
@@ -101,7 +108,7 @@ Computes aggregate metrics for dashboard KPI cards.
     }
   }
   ```
-  If no incidents exist, returns zeroed fields and empty lists safely.
+  If no incidents exist, returns zeroed fields and empty lists safely. All values are guaranteed 100% JSON-serializable.
 
 ---
 

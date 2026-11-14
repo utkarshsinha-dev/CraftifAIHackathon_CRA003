@@ -16,11 +16,14 @@ import math
 
 def calculate_polygon_centroid(polygon: List[List[float]]) -> Tuple[float, float]:
     """Calculates the geometric centroid (x, y) of a 2D polygon."""
-    if not polygon:
+    if not polygon or len(polygon) < 3:
         return (0.5, 0.5)
-    xs = [p[0] for p in polygon]
-    ys = [p[1] for p in polygon]
-    return (sum(xs) / len(xs), sum(ys) / len(ys))
+    try:
+        xs = [float(p[0]) for p in polygon]
+        ys = [float(p[1]) for p in polygon]
+        return (sum(xs) / len(xs), sum(ys) / len(ys))
+    except (IndexError, ValueError, TypeError):
+        return (0.5, 0.5)
 
 
 def assess_incident_risk(
@@ -49,14 +52,29 @@ def assess_incident_risk(
 
     # 1. Base score by configured zone hazard level
     zone_severity_upper = (zone_severity or "WARNING").upper()
-    if zone_severity_upper == "CRITICAL":
+    if zone_severity_upper in ("CRITICAL", "HIGH"):
         base_zone_pts = 50
-    elif zone_severity_upper == "WARNING":
+    elif zone_severity_upper in ("WARNING", "MEDIUM"):
         base_zone_pts = 30
     else:
         base_zone_pts = 10
     score += base_zone_pts
     contributing_factors["zone_severity_weight"] = base_zone_pts
+
+    # Sanitize inputs
+    try:
+        safe_dwell = float(dwell_time_s) if dwell_time_s is not None else 0.0
+        if not math.isfinite(safe_dwell) or safe_dwell < 0:
+            safe_dwell = 0.0
+    except (ValueError, TypeError):
+        safe_dwell = 0.0
+
+    try:
+        safe_conf = float(confidence) if confidence is not None else 1.0
+        if not math.isfinite(safe_conf):
+            safe_conf = 1.0
+    except (ValueError, TypeError):
+        safe_conf = 1.0
 
     # 2. Event type weighting
     if event_type == "ZONE_INTRUSION_ENTRY":
@@ -64,29 +82,29 @@ def assess_incident_risk(
         event_reason = "Immediate perimeter breach into restricted boundary"
     elif event_type == "ZONE_INTRUSION_OCCUPANCY":
         # Cumulative dwell risk escalation
-        if dwell_time_s >= 6.0:
+        if safe_dwell >= 6.0:
             dwell_penalty = 25
-            event_reason = f"Severe prolonged loitering ({dwell_time_s:.1f}s) inside hazard area"
-        elif dwell_time_s >= 4.0:
+            event_reason = f"Severe prolonged loitering ({safe_dwell:.1f}s) inside hazard area"
+        elif safe_dwell >= 4.0:
             dwell_penalty = 20
-            event_reason = f"Substantial occupancy duration ({dwell_time_s:.1f}s) exceeding safety threshold"
-        elif dwell_time_s >= 2.0:
+            event_reason = f"Substantial occupancy duration ({safe_dwell:.1f}s) exceeding safety threshold"
+        elif safe_dwell >= 2.0:
             dwell_penalty = 15
-            event_reason = f"Continued occupancy ({dwell_time_s:.1f}s) past baseline safety cooldown"
+            event_reason = f"Continued occupancy ({safe_dwell:.1f}s) past baseline safety cooldown"
         else:
             dwell_penalty = 10
-            event_reason = f"Active occupancy ({dwell_time_s:.1f}s) inside restricted boundary"
+            event_reason = f"Active occupancy ({safe_dwell:.1f}s) inside restricted boundary"
         event_pts = dwell_penalty
     elif event_type == "ZONE_INTRUSION_EXIT":
         event_pts = -15
-        event_reason = f"Personnel successfully exited zone after {dwell_time_s:.1f}s dwell"
+        event_reason = f"Personnel successfully exited zone after {safe_dwell:.1f}s dwell"
     else:
         event_pts = 0
         event_reason = f"Standard event: {event_type}"
 
     score += event_pts
     contributing_factors["event_type_weight"] = event_pts
-    contributing_factors["dwell_time_seconds"] = round(float(dwell_time_s), 2)
+    contributing_factors["dwell_time_seconds"] = round(safe_dwell, 2)
 
     # 3. Kinematic motion direction & proximity factor
     motion_pts = 0
@@ -114,7 +132,13 @@ def assess_incident_risk(
 
     # 4. Centroid proximity (penetration depth)
     centroid = calculate_polygon_centroid(zone_polygon)
-    dist_to_center = math.sqrt((ground_point[0] - centroid[0]) ** 2 + (ground_point[1] - centroid[1]) ** 2)
+    try:
+        gx = float(ground_point[0]) if ground_point else 0.5
+        gy = float(ground_point[1]) if ground_point else 0.5
+        dist_to_center = math.sqrt((gx - centroid[0]) ** 2 + (gy - centroid[1]) ** 2)
+    except (ValueError, TypeError, IndexError):
+        dist_to_center = 0.5
+
     contributing_factors["distance_to_zone_centroid"] = round(dist_to_center, 4)
     if dist_to_center < 0.15:
         proximity_pts = 10
@@ -129,7 +153,7 @@ def assess_incident_risk(
     contributing_factors["proximity_weight"] = proximity_pts
 
     # 5. Model confidence dampening (slight penalty if detector confidence is marginal)
-    if confidence < 0.50:
+    if safe_conf < 0.50:
         conf_pts = -5
     else:
         conf_pts = 0

@@ -1,9 +1,9 @@
 # SENTINEL VISION AI — EHS INCIDENT INVESTIGATION REPORT
 
-> **Report Generated:** `2026-11-14 06:39:08 UTC`  
-> **System:** Sentinel Vision AI v2.0 (PipeGen Perception + DeepStream 7.1)  
-> **Hardware Node:** NVIDIA GeForce RTX 4060 Laptop GPU (TensorRT 10.3 FP32)  
-> **Audit Target:** Workplace Perimeter Safety & Restricted Zone Monitoring  
+> **Report Generated:** `2026-11-14 07:14:08 UTC`<br/>
+> **System:** Sentinel Vision AI v2.0 (PipeGen Perception + DeepStream 7.1)<br/>
+> **Hardware Node:** NVIDIA GeForce RTX 4060 Laptop GPU (TensorRT 10.3 FP32)<br/>
+> **Audit Target:** Workplace Perimeter Safety & Restricted Zone Monitoring
 
 ---
 
@@ -20,7 +20,7 @@ During the surveillance monitoring session, **6 safety incident events** were au
 | **Peak Dwell Duration** | **4.07 s** | < 2.0 s Cooldown | EXCEEDED |
 | **Unique Personnel Involved** | **2** | Authorized Only | INVESTIGATE |
 | **Restricted Zones Breached** | **Heavy Equipment Perimeter A** | 0 Zones | PERIMETER COMPROMISED |
-| **Alarm Anti-Spam Suppression** | **320 raw &rarr; 6 alerts** | > 95% noise reduction | **98.1% EFFECTIVE** |
+| **Alarm Anti-Spam Suppression** | **Cooldown Active &rarr; 6 alerts** | Noise Suppression Active | **OPERATIONAL** |
 
 ---
 
@@ -115,18 +115,18 @@ During the surveillance monitoring session, **6 safety incident events** were au
 
 ## 4. Root-Cause Analysis & Risk Factors
 
-1. **Proximity to Automated Diagnostic Machinery:** Personnel entered the machine envelope at Frame 3 (t=0.18s) and remained stationary for 4.24 seconds without safety barrier de-energization.
-2. **Stationary Loitering:** Prolonged dwell time indicates intentional maintenance or troubleshooting activity without lockout/tagout (LOTO) verification.
-3. **Dual Personnel Exposure:** Simultaneous intrusion by Track 0 and Track 1 increases multi-worker risk.
+1. **Hazard Perimeter Incursion:** Active intrusion into `Heavy Equipment Perimeter A` involving 2 personnel (IDs: 0, 1).
+2. **Continuous Dwell Exposure:** Maximum duration reached 4.07s inside restricted envelope, triggering persistent occupancy alerts under cooldown supervision.
+3. **Multi-Worker Safety Risk:** 6 cumulative alert events recorded, of which 6 reached CRITICAL severity classification.
 
 ---
 
 ## 5. Corrective & Preventive Actions (CAPA)
 
-- [ ] **CAPA-01 (Immediate Dispatch):** Trigger automated supervisor intercom alert when dwell duration exceeds 2.0s in Heavy Equipment Perimeter A.
-- [ ] **CAPA-02 (Perimeter Interlock):** Evaluate optical interlock integration with machinery emergency-stop (E-stop) circuit.
-- [ ] **CAPA-03 (Worker Verification):** Verify badge credentials for Personnel Track 0 and Track 1 to confirm safety maintenance authorization.
-- [ ] **CAPA-04 (Zone Re-calibration):** Audit boundary coordinates in `configs/restricted_zone.json` to ensure 0.5m buffer clearance.
+- [ ] **CAPA-01 (Supervisor Intervention):** Verify authorization and credentials for personnel (0, 1) involved in perimeter breach.
+- [ ] **CAPA-02 (Perimeter Review):** Inspect physical barriers and signage around `Heavy Equipment Perimeter A` to ensure optical clearance.
+- [ ] **CAPA-03 (Interlock Verification):** Audit e-stop interlock response timing when dwell exceeds safety threshold.
+- [ ] **CAPA-04 (Configuration Audit):** Confirm `configs/restricted_zone.json` maintains proper boundary buffers.
 
 ---
 

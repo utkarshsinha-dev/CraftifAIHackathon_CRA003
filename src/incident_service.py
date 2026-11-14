@@ -13,6 +13,7 @@ Contract Interfaces:
 """
 
 import json
+import math
 import os
 from typing import Dict, List, Any, Optional
 
@@ -20,17 +21,30 @@ from src.safety_copilot import SafetyCopilot
 
 DEFAULT_LOG_PATH = "data/output/incident_records.jsonl"
 
+_CACHE_PATH: Optional[str] = None
+_CACHE_MTIME: Optional[float] = None
+_CACHE_DATA: Optional[List[Dict[str, Any]]] = None
+
 
 def load_incidents(path: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Loads all structured incident records from a JSON Lines file.
     Returns empty list safely if file is missing or empty.
+    Caches parsed records based on file modification timestamp to optimize repeated UI reruns.
     """
+    global _CACHE_PATH, _CACHE_MTIME, _CACHE_DATA
     target_path = path or DEFAULT_LOG_PATH
-    incidents = []
     if not os.path.isfile(target_path):
-        return incidents
+        return []
 
+    try:
+        current_mtime = os.path.getmtime(target_path)
+        if _CACHE_PATH == target_path and _CACHE_MTIME == current_mtime and _CACHE_DATA is not None:
+            return [dict(r) for r in _CACHE_DATA]
+    except OSError:
+        current_mtime = None
+
+    incidents = []
     with open(target_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -41,7 +55,11 @@ def load_incidents(path: Optional[str] = None) -> List[Dict[str, Any]]:
                 incidents.append(record)
             except json.JSONDecodeError:
                 continue
-    return incidents
+
+    _CACHE_PATH = target_path
+    _CACHE_MTIME = current_mtime
+    _CACHE_DATA = incidents
+    return [dict(r) for r in incidents]
 
 
 def get_incident_statistics(
@@ -50,6 +68,7 @@ def get_incident_statistics(
 ) -> Dict[str, Any]:
     """
     Computes exact summary metrics for dashboard KPI cards.
+    Maintains complete backward compatibility while offering enhanced risk metrics.
     """
     records = incidents if incidents is not None else load_incidents(path)
     total = len(records)
@@ -61,25 +80,51 @@ def get_incident_statistics(
             "warning_count": 0,
             "info_count": 0,
             "max_dwell_s": 0.0,
+            "max_risk_score": 0.0,
+            "average_risk_score": 0.0,
+            "severity_counts": {"CRITICAL": 0, "WARNING": 0, "INFO": 0},
             "zones_breached": [],
             "event_breakdown": {},
         }
 
     unique_tracks = sorted(
-        list(set(str(i.get("track_id")) for i in records if i.get("track_id") is not None))
+        list(set(str(i.get("track_id") if i.get("track_id") is not None else i.get("entity_id", "untracked")) for i in records))
     )
-    zones = sorted(list(set(i.get("zone_name", i.get("zone_id", "Unknown")) for i in records)))
+    zones = sorted(list(set(str(i.get("zone_name") or i.get("zone_id") or "Unknown") for i in records)))
 
-    critical_count = sum(1 for i in records if i.get("severity") == "CRITICAL")
-    warning_count = sum(1 for i in records if i.get("severity") == "WARNING")
-    info_count = sum(1 for i in records if i.get("severity") == "INFO")
+    critical_count = sum(1 for i in records if (i.get("severity") or "").upper() == "CRITICAL")
+    warning_count = sum(1 for i in records if (i.get("severity") or "").upper() == "WARNING")
+    info_count = sum(1 for i in records if (i.get("severity") or "").upper() == "INFO")
 
     event_breakdown = {}
     for inc in records:
-        evt = inc.get("event_type", "UNKNOWN")
+        evt = str(inc.get("event_type") or "UNKNOWN")
         event_breakdown[evt] = event_breakdown.get(evt, 0) + 1
 
-    max_dwell = max([float(i.get("dwell_time_s", 0.0)) for i in records], default=0.0)
+    dwell_times = []
+    for i in records:
+        d = i.get("dwell_time_s", 0.0)
+        try:
+            val = float(d)
+            if math.isfinite(val):
+                dwell_times.append(val)
+        except (ValueError, TypeError):
+            continue
+    max_dwell = max(dwell_times, default=0.0)
+
+    risk_scores = []
+    for i in records:
+        r_obj = i.get("risk_assessment")
+        if isinstance(r_obj, dict):
+            s = r_obj.get("risk_score")
+            try:
+                val = float(s)
+                if math.isfinite(val):
+                    risk_scores.append(val)
+            except (ValueError, TypeError):
+                continue
+    max_risk = max(risk_scores, default=0.0)
+    avg_risk = round(sum(risk_scores) / len(risk_scores), 2) if risk_scores else 0.0
 
     return {
         "total_incidents": total,
@@ -88,6 +133,13 @@ def get_incident_statistics(
         "warning_count": warning_count,
         "info_count": info_count,
         "max_dwell_s": round(max_dwell, 2),
+        "max_risk_score": round(max_risk, 2),
+        "average_risk_score": avg_risk,
+        "severity_counts": {
+            "CRITICAL": critical_count,
+            "WARNING": warning_count,
+            "INFO": info_count,
+        },
         "zones_breached": zones,
         "event_breakdown": event_breakdown,
     }
@@ -102,6 +154,8 @@ def get_incident_details(
     Retrieves full telemetry, bounding box, kinematics, and risk breakdown
     for a specific incident by its incident_id.
     """
+    if not event_id:
+        return None
     records = incidents if incidents is not None else load_incidents(path)
     for inc in records:
         if inc.get("incident_id") == event_id:

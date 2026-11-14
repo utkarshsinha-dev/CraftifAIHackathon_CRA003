@@ -52,21 +52,23 @@ def create_ehs_report(
 
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     total_events = len(records)
-    unique_tracks = sorted(list(set(str(i.get("track_id")) for i in records if i.get("track_id") is not None)))
-    zones = sorted(list(set(i.get("zone_name", i.get("zone_id", "Unknown")) for i in records)))
+    unique_tracks = sorted(
+        list(set(str(i.get("track_id") if i.get("track_id") is not None else i.get("entity_id", "untracked")) for i in records))
+    )
+    zones = sorted(list(set(str(i.get("zone_name") or i.get("zone_id") or "Unknown") for i in records)))
     max_dwell = max([float(i.get("dwell_time_s", 0.0)) for i in records], default=0.0)
 
-    crit_count = sum(1 for i in records if i.get("severity") == "CRITICAL")
-    warn_count = sum(1 for i in records if i.get("severity") == "WARNING")
-    info_count = sum(1 for i in records if i.get("severity") == "INFO")
+    crit_count = sum(1 for i in records if (i.get("severity") or "").upper() == "CRITICAL")
+    warn_count = sum(1 for i in records if (i.get("severity") or "").upper() == "WARNING")
+    info_count = sum(1 for i in records if (i.get("severity") or "").upper() == "INFO")
 
     lines = []
     lines.append("# SENTINEL VISION AI — EHS INCIDENT INVESTIGATION REPORT")
     lines.append("")
-    lines.append(f"> **Report Generated:** `{now_iso}`  ")
-    lines.append(f"> **System:** Sentinel Vision AI v2.0 (PipeGen Perception + DeepStream 7.1)  ")
-    lines.append(f"> **Hardware Node:** NVIDIA GeForce RTX 4060 Laptop GPU (TensorRT 10.3 FP32)  ")
-    lines.append(f"> **Audit Target:** Workplace Perimeter Safety & Restricted Zone Monitoring  ")
+    lines.append(f"> **Report Generated:** `{now_iso}`<br/>")
+    lines.append(f"> **System:** Sentinel Vision AI v2.0 (PipeGen Perception + DeepStream 7.1)<br/>")
+    lines.append(f"> **Hardware Node:** NVIDIA GeForce RTX 4060 Laptop GPU (TensorRT 10.3 FP32)<br/>")
+    lines.append(f"> **Audit Target:** Workplace Perimeter Safety & Restricted Zone Monitoring")
     lines.append("")
     lines.append("---")
     lines.append("")
@@ -86,9 +88,9 @@ def create_ehs_report(
     lines.append(f"| **Total Logged Incidents** | **{total_events}** | 0 Target | {'FLAGGED' if total_events > 0 else 'CLEAR'} |")
     lines.append(f"| **Critical Breaches** | **{crit_count}** | 0 Target | {'CRITICAL' if crit_count > 0 else 'CLEAR'} |")
     lines.append(f"| **Peak Dwell Duration** | **{max_dwell:.2f} s** | < 2.0 s Cooldown | {'EXCEEDED' if max_dwell > 2.0 else 'NORMAL'} |")
-    lines.append(f"| **Unique Personnel Involved** | **{len(unique_tracks)}** | Authorized Only | INVESTIGATE |")
-    lines.append(f"| **Restricted Zones Breached** | **{', '.join(zones) if zones else 'None'}** | 0 Zones | PERIMETER COMPROMISED |")
-    lines.append(f"| **Alarm Anti-Spam Suppression** | **320 raw &rarr; {total_events} alerts** | > 95% noise reduction | **98.1% EFFECTIVE** |")
+    lines.append(f"| **Unique Personnel Involved** | **{len(unique_tracks)}** | Authorized Only | {'INVESTIGATE' if unique_tracks else 'CLEAR'} |")
+    lines.append(f"| **Restricted Zones Breached** | **{', '.join(zones) if zones else 'None'}** | 0 Zones | {'PERIMETER COMPROMISED' if zones else 'CLEAR'} |")
+    lines.append(f"| **Alarm Anti-Spam Suppression** | **Cooldown Active &rarr; {total_events} alerts** | Noise Suppression Active | **OPERATIONAL** |")
     lines.append("")
     lines.append("---")
     lines.append("")
@@ -100,7 +102,7 @@ def create_ehs_report(
     for idx, inc in enumerate(records, 1):
         v_time = inc.get("video_time_s", 0.0)
         f_idx = inc.get("frame_index", "N/A")
-        tid = inc.get("track_id", "untracked")
+        tid = inc.get("track_id") if inc.get("track_id") is not None else inc.get("entity_id", "untracked")
         zname = inc.get("zone_name", inc.get("zone_id", "Zone"))
         evt = inc.get("event_type", "UNKNOWN")
         dwell = inc.get("dwell_time_s", 0.0)
@@ -115,7 +117,8 @@ def create_ehs_report(
     lines.append("")
 
     for idx, inc in enumerate(records, 1):
-        lines.append(f"### Incident #{idx}: {inc.get('event_type')} (Track {inc.get('track_id')})")
+        tid = inc.get("track_id") if inc.get("track_id") is not None else inc.get("entity_id", "untracked")
+        lines.append(f"### Incident #{idx}: {inc.get('event_type')} (Track {tid})")
         lines.append("")
         lines.append(f"- **Incident ID:** `{inc.get('incident_id')}`")
         lines.append(f"- **Session Timestamp:** `{inc.get('timestamp_iso')}` (Video elapsed: `{inc.get('video_time_s')}s`, Frame `#{inc.get('frame_index')}`)")
@@ -136,26 +139,40 @@ def create_ehs_report(
 
     lines.append("---")
     lines.append("")
-    lines.append("## 4. Root-Cause Analysis & Risk Factors")
-    lines.append("")
-    lines.append(
-        "1. **Proximity to Automated Diagnostic Machinery:** Personnel entered the machine envelope "
-        "at Frame 3 (t=0.18s) and remained stationary for 4.24 seconds without safety barrier de-energization.\n"
-        "2. **Stationary Loitering:** Prolonged dwell time indicates intentional maintenance or troubleshooting "
-        "activity without lockout/tagout (LOTO) verification.\n"
-        "3. **Dual Personnel Exposure:** Simultaneous intrusion by Track 0 and Track 1 increases multi-worker risk."
-    )
-    lines.append("")
-    lines.append("---")
-    lines.append("")
-    lines.append("## 5. Corrective & Preventive Actions (CAPA)")
-    lines.append("")
-    lines.append(
-        "- [ ] **CAPA-01 (Immediate Dispatch):** Trigger automated supervisor intercom alert when dwell duration exceeds 2.0s in Heavy Equipment Perimeter A.\n"
-        "- [ ] **CAPA-02 (Perimeter Interlock):** Evaluate optical interlock integration with machinery emergency-stop (E-stop) circuit.\n"
-        "- [ ] **CAPA-03 (Worker Verification):** Verify badge credentials for Personnel Track 0 and Track 1 to confirm safety maintenance authorization.\n"
-        "- [ ] **CAPA-04 (Zone Re-calibration):** Audit boundary coordinates in `configs/restricted_zone.json` to ensure 0.5m buffer clearance."
-    )
+    if not records:
+        lines.append("## 4. Root-Cause Analysis & Risk Factors")
+        lines.append("")
+        lines.append("- No perimeter breaches or safety risk factors detected. Monitored perimeters remained clear.")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+        lines.append("## 5. Corrective & Preventive Actions (CAPA)")
+        lines.append("")
+        lines.append("- [ ] **CAPA-01 (Routine Audit):** Maintain scheduled sensor and optical camera inspection intervals.\n"
+                     "- [ ] **CAPA-02 (Perimeter Assurance):** Verify zone coordinates in `configs/restricted_zone.json` remain aligned with facility markings.")
+    else:
+        lines.append("## 4. Root-Cause Analysis & Risk Factors")
+        lines.append("")
+        primary_zone = zones[0] if zones else "Restricted Area"
+        lines.append(
+            f"1. **Hazard Perimeter Incursion:** Active intrusion into `{', '.join(zones)}` "
+            f"involving {len(unique_tracks)} personnel (IDs: {', '.join(unique_tracks)}).\n"
+            f"2. **Continuous Dwell Exposure:** Maximum duration reached {max_dwell:.2f}s inside "
+            f"restricted envelope, triggering persistent occupancy alerts under cooldown supervision.\n"
+            f"3. **Multi-Worker Safety Risk:** {total_events} cumulative alert events recorded, "
+            f"of which {crit_count} reached CRITICAL severity classification."
+        )
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+        lines.append("## 5. Corrective & Preventive Actions (CAPA)")
+        lines.append("")
+        lines.append(
+            f"- [ ] **CAPA-01 (Supervisor Intervention):** Verify authorization and credentials for personnel ({', '.join(unique_tracks)}) involved in perimeter breach.\n"
+            f"- [ ] **CAPA-02 (Perimeter Review):** Inspect physical barriers and signage around `{primary_zone}` to ensure optical clearance.\n"
+            f"- [ ] **CAPA-03 (Interlock Verification):** Audit e-stop interlock response timing when dwell exceeds safety threshold.\n"
+            f"- [ ] **CAPA-04 (Configuration Audit):** Confirm `configs/restricted_zone.json` maintains proper boundary buffers."
+        )
     lines.append("")
     lines.append("---")
     lines.append("")
